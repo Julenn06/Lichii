@@ -333,7 +333,7 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 constexpr int default_mouse_hide_timeout = 2500;
 // Controllers are pumped every millisecond while a game runs (input latency) and every 8 ms in the
 // menus, where 1 ms woke the GUI thread ~1000 times a second for nothing.
-constexpr int default_input_update_timeout = 8;
+constexpr int default_input_update_timeout = 1;
 constexpr int running_input_update_timeout = 1;
 constexpr int EmuThreadStopTimeoutMs = 10'000;
 
@@ -505,7 +505,6 @@ MainWindow::MainWindow(bool has_broken_vulkan)
     connect(ui->menubar, &QMenuBar::hovered, this, &MainWindow::ShowMouseCursor);
 
     update_input_timer.setInterval(default_input_update_timeout);
-    update_input_timer.setTimerType(Qt::PreciseTimer);
     connect(&update_input_timer, &QTimer::timeout, this, &MainWindow::UpdateInputDrivers);
     update_input_timer.start();
 
