@@ -35,6 +35,7 @@
 
 #ifdef _WIN32
 #include <QScreen>
+#include <QTimer>
 
 static void OverrideWindowsFont() {
     // Qt5 chooses these fonts on Windows and they have fairly ugly alphanumeric/cyrillic characters
@@ -307,6 +308,13 @@ int main(int argc, char* argv[]) {
     MainWindow main_window{has_broken_vulkan};
     // After settings have been loaded by GMainWindow, apply the filter
     main_window.show();
+    // EDEN_UI_PREVIEW=<dir> (development): render the main window and every settings page to PNGs
+    // in <dir>, then quit. Run with QT_QPA_PLATFORM=offscreen so nothing appears on screen.
+    if (const char* preview_dir = std::getenv("EDEN_UI_PREVIEW"); preview_dir && *preview_dir) {
+        QTimer::singleShot(2000, &main_window, [&main_window, dir = QString::fromLocal8Bit(preview_dir)] {
+            main_window.RunUiPreview(dir);
+        });
+    }
 
     app.connect(&app, &QGuiApplication::applicationStateChanged, &main_window, &MainWindow::OnAppFocusStateChanged);
     return app.exec();

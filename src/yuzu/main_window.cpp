@@ -91,6 +91,9 @@
 #include <QScreen>
 #include <QShortcut>
 #include <QStatusBar>
+#include <QListWidget>
+#include <QTabWidget>
+#include <QTimer>
 #include <QtConcurrentRun>
 
 #ifdef __APPLE__
@@ -324,7 +327,10 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 #endif
 
 constexpr int default_mouse_hide_timeout = 2500;
-constexpr int default_input_update_timeout = 1;
+// Controllers are pumped every millisecond while a game runs (input latency) and every 8 ms in the
+// menus, where 1 ms woke the GUI thread ~1000 times a second for nothing.
+constexpr int default_input_update_timeout = 8;
+constexpr int running_input_update_timeout = 1;
 constexpr int EmuThreadStopTimeoutMs = 10'000;
 
 constexpr size_t CopyBufferSize = 1_MiB;
@@ -487,6 +493,7 @@ MainWindow::MainWindow(bool has_broken_vulkan)
     connect(ui->menubar, &QMenuBar::hovered, this, &MainWindow::ShowMouseCursor);
 
     update_input_timer.setInterval(default_input_update_timeout);
+    update_input_timer.setTimerType(Qt::PreciseTimer);
     connect(&update_input_timer, &QTimer::timeout, this, &MainWindow::UpdateInputDrivers);
     update_input_timer.start();
 
@@ -2300,6 +2307,7 @@ void MainWindow::OnEmulationStopped() {
     if (QtCommon::emu_thread && QtCommon::emu_thread->isRunning()) {
         return;
     }
+    update_input_timer.setInterval(default_input_update_timeout);
     shutdown_timer.stop();
     emu_terminate_timer.stop();
     if (QtCommon::emu_thread) {
@@ -3187,6 +3195,7 @@ void MainWindow::OnMenuRecentFile() {
 
 void MainWindow::OnStartGame() {
     PreventOSSleep();
+    update_input_timer.setInterval(running_input_update_timeout);
 
     QtCommon::emu_thread->SetRunning(true);
 
@@ -3608,6 +3617,44 @@ void MainWindow::ToggleShowGameName() {
 
     game_list->UpdateIconSizes();
     game_list->RefreshGameDirectory();
+}
+
+void MainWindow::RunUiPreview(const QString& dir) {
+    QDir().mkpath(dir);
+    const auto save = [&dir](QWidget* widget, const QString& name) {
+        QCoreApplication::processEvents();
+        const bool saved = widget->grab().save(QStringLiteral("%1/%2.png").arg(dir, name));
+        LOG_INFO(Frontend, "UI preview: {} {}", name.toStdString(), saved ? "saved" : "failed");
+    };
+    resize(1280, 760);
+    save(this, QStringLiteral("main"));
+    if (QMenu* menu = ui->menu_File) {
+        menu->popup(mapToGlobal(QPoint(0, menuBar()->height())));
+        save(menu, QStringLiteral("menu_file"));
+        menu->hide();
+    }
+
+    Settings::SetConfiguringGlobal(true);
+    ConfigureDialog dialog(this, hotkey_registry, input_subsystem.get(), vk_device_records,
+                           *QtCommon::system, true);
+    dialog.show();
+    auto* const selector = dialog.findChild<QListWidget*>(QStringLiteral("selectorList"));
+    auto* const tabs = dialog.findChild<QTabWidget*>(QStringLiteral("tabWidget"));
+    const int pages = selector != nullptr ? selector->count() : 1;
+    for (int page = 0; page < pages; ++page) {
+        if (selector != nullptr) {
+            selector->setCurrentRow(page);
+        }
+        const int tab_count = tabs != nullptr ? tabs->count() : 1;
+        for (int tab = 0; tab < tab_count; ++tab) {
+            if (tabs != nullptr) {
+                tabs->setCurrentIndex(tab);
+            }
+            save(&dialog, QStringLiteral("config_%1_%2").arg(page).arg(tab));
+        }
+    }
+    dialog.hide();
+    QTimer::singleShot(0, qApp, &QCoreApplication::quit);
 }
 
 void MainWindow::OnConfigure() {
@@ -5272,9 +5319,11 @@ void MainWindow::UpdateUITheme() {
     QString theme_uri{QStringLiteral(":%1/style.qss").arg(current_theme)};
     QFile f(theme_uri);
     if (f.open(QFile::ReadOnly | QFile::Text)) {
+        // On the application only: the window inherits it (a second readAll() returned nothing
+        // anyway, so the window's own sheet was always empty).
         QTextStream ts(&f);
         qApp->setStyleSheet(ts.readAll());
-        setStyleSheet(ts.readAll());
+        setStyleSheet({});
     } else {
         LOG_ERROR(Frontend, "Unable to set style \"{}\", stylesheet file not found",
                   UISettings::values.theme);

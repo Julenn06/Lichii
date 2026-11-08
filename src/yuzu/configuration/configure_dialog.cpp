@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <memory>
+#include <QScrollArea>
 #include "common/logging.h"
 #include "common/settings.h"
 #include "common/settings_enums.h"
@@ -117,7 +118,25 @@ ConfigureDialog::ConfigureDialog(QWidget* parent, HotkeyRegistry& registry_,
     ui->buttonBox->setFocus();
 }
 
-ConfigureDialog::~ConfigureDialog() = default;
+ConfigureDialog::~ConfigureDialog() {
+    // The tabs belong to their unique_ptrs, not to the scroll areas around them.
+    for (auto& [tab, area] : scroll_areas) {
+        area->takeWidget();
+    }
+}
+
+QWidget* ConfigureDialog::ScrollableTab(QWidget* tab) {
+    auto& area = scroll_areas[tab];
+    if (area == nullptr) {
+        area = new QScrollArea(this);
+        area->setObjectName(QStringLiteral("SettingsPageScroll"));
+        area->setFrameShape(QFrame::NoFrame);
+        area->setWidgetResizable(true);
+        area->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        area->setWidget(tab);
+    }
+    return area;
+}
 
 void ConfigureDialog::SetConfiguration() {}
 
@@ -219,6 +238,6 @@ void ConfigureDialog::UpdateVisibleTabs() {
 
     for (auto* const tab : tabs) {
         LOG_DEBUG(Frontend, "{}", tab->accessibleName().toStdString());
-        ui->tabWidget->addTab(tab, tab->accessibleName());
+        ui->tabWidget->addTab(ScrollableTab(tab), tab->accessibleName());
     }
 }

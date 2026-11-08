@@ -97,7 +97,7 @@ ConfigureUi::ConfigureUi(Core::System& system_, QWidget* parent)
     InitializeLanguageComboBox();
 
     for (const auto& theme : UISettings::themes) {
-        ui->theme_combobox->addItem(QString::fromUtf8(theme.first),
+        ui->theme_combobox->addItem(QCoreApplication::translate("ConfigureUi", theme.first),
                                     QString::fromUtf8(theme.second));
     }
 

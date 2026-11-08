@@ -93,13 +93,14 @@ GameListSearchField::GameListSearchField(GameList* parent) : QWidget{parent} {
     connect(edit_filter, &QLineEdit::textChanged, parent, &GameList::OnTextChanged);
     label_filter_result = new QLabel;
     button_filter_close = new QToolButton(this);
-    button_filter_close->setText(QStringLiteral("X"));
-    button_filter_close->setCursor(Qt::ArrowCursor);
+    button_filter_close->setText(QStringLiteral("✕"));
+    button_filter_close->setCursor(Qt::PointingHandCursor);
+    button_filter_close->setToolTip(tr("Close search"));
+    // Takes the theme's text colour (a white box on every theme before); red only on hover.
     button_filter_close->setStyleSheet(
-        QStringLiteral("QToolButton{ border: none; padding: 0px; color: "
-                       "#000000; font-weight: bold; background: #F0F0F0; }"
-                       "QToolButton:hover{ border: none; padding: 0px; color: "
-                       "#EEEEEE; font-weight: bold; background: #E81123}"));
+        QStringLiteral("QToolButton{ border: none; border-radius: 6px; padding: 3px 7px; "
+                       "background: transparent; font-weight: bold; }"
+                       "QToolButton:hover{ background: #E81123; color: #FFFFFF; }"));
     connect(button_filter_close, &QToolButton::clicked, parent, &GameList::OnFilterCloseClicked);
     layout_filter->setSpacing(10);
     layout_filter->addWidget(label_filter);

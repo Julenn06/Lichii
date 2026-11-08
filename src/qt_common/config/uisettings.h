@@ -61,17 +61,13 @@ enum class Theme {
     DarkColorful,
     MidnightBlue,
     MidnightBlueColorful,
+    Lichii,
 };
 
-static constexpr Theme default_theme{
-#ifdef _WIN32
-    Theme::DarkColorful
-#else
-    Theme::DefaultColorful
-#endif
-};
+static constexpr Theme default_theme{Theme::Lichii};
 
-using Themes = std::array<std::pair<const char*, const char*>, 6>;
+/// Display name (translated in the "ConfigureUi" context) and resource name of each theme.
+using Themes = std::array<std::pair<const char*, const char*>, 7>;
 extern const Themes themes;
 
 struct GameDir {

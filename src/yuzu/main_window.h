@@ -375,6 +375,12 @@ private slots:
     void OnMenuInstallToNAND();
     void OnMenuRecentFile();
     void OnConfigure();
+
+public:
+    /// EDEN_UI_PREVIEW: renders the main window and each settings page to `dir`, then quits.
+    void RunUiPreview(const QString& dir);
+
+private:
     void OnConfigureTas();
     void OnDecreaseVolume();
     void OnIncreaseVolume();

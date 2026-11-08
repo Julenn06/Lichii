@@ -7,6 +7,7 @@
 #pragma once
 
 #include <memory>
+#include <unordered_map>
 #include <vector>
 #include <QDialog>
 #include "configuration/shared_widget.h"
@@ -72,6 +73,11 @@ private:
 
     void SetConfiguration();
     void UpdateVisibleTabs();
+    /// The tab inside a frameless scroll area (made once per tab): a page taller than the
+    /// dialog scrolls instead of squeezing its rows.
+    QWidget* ScrollableTab(QWidget* tab);
+
+    std::unordered_map<QWidget*, class QScrollArea*> scroll_areas;
     void PopulateSelectionList();
 
     std::unique_ptr<Ui::ConfigureDialog> ui;

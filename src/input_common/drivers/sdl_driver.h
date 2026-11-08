@@ -76,9 +76,6 @@ private:
     /// Needs to be called before SDL_QuitSubSystem.
     void CloseJoysticks();
 
-    /// Takes all vibrations from the queue and sends the command to the controller
-    void SendVibrations();
-
     Common::ParamPackage BuildAnalogParamPackageForButton(int port, const Common::UUID& guid,
                                                           s32 axis, float value = 0.1f) const;
     Common::ParamPackage BuildButtonParamPackageForButton(int port, const Common::UUID& guid,

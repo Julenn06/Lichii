@@ -67,17 +67,19 @@ const std::array<Shortcut, 32> default_hotkeys{{
 // clang-format on
 
 const Themes themes{{
-    {"Default", "default"},
-    {"Default Colorful", "colorful"},
-    {"Dark", "qdarkstyle"},
-    {"Dark Colorful", "colorful_dark"},
-    {"Midnight Blue", "qdarkstyle_midnight_blue"},
-    {"Midnight Blue Colorful", "colorful_midnight_blue"},
+    {QT_TRANSLATE_NOOP("ConfigureUi", "Default"), "default"},
+    {QT_TRANSLATE_NOOP("ConfigureUi", "Default Colorful"), "colorful"},
+    {QT_TRANSLATE_NOOP("ConfigureUi", "Dark"), "qdarkstyle"},
+    {QT_TRANSLATE_NOOP("ConfigureUi", "Dark Colorful"), "colorful_dark"},
+    {QT_TRANSLATE_NOOP("ConfigureUi", "Midnight Blue"), "qdarkstyle_midnight_blue"},
+    {QT_TRANSLATE_NOOP("ConfigureUi", "Midnight Blue Colorful"), "colorful_midnight_blue"},
+    {QT_TRANSLATE_NOOP("ConfigureUi", "Lichii (modern dark)"), "lichii_dark"},
 }};
 
 bool IsDarkTheme() {
     const auto& theme = UISettings::values.theme;
-    return theme == std::string("qdarkstyle") || theme == std::string("qdarkstyle_midnight_blue") ||
+    return theme == std::string("lichii_dark") || theme == std::string("qdarkstyle") ||
+           theme == std::string("qdarkstyle_midnight_blue") ||
            theme == std::string("colorful_dark") || theme == std::string("colorful_midnight_blue");
 }
 

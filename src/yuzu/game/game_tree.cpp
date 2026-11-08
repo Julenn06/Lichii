@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <algorithm>
 #include <QApplication>
 #include <QHeaderView>
 #include <QScroller>
@@ -63,6 +64,12 @@ void GameTree::LoadInterfaceLayout() {
         return;
 
     hdr->resizeSection(GameListModel::COLUMN_NAME, 840);
+    // The other columns kept the 100 px default, which cut longer titles ("Tiempo de juego").
+    for (int column = 0; column < hdr->count(); ++column) {
+        if (column != GameListModel::COLUMN_NAME) {
+            hdr->resizeSection(column, (std::max)(hdr->sectionSizeHint(column) + 12, 100));
+        }
+    }
 }
 
 void GameTree::UpdateColumnVisibility(GameListModel* model) {

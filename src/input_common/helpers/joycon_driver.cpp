@@ -166,15 +166,12 @@ void JoyconDriver::InputThread(std::stop_token stop_token) {
             OnNewData(buffer);
         }
 
-        if (!vibration_queue.Empty()) {
-            VibrationValue vibration_value;
-            vibration_queue.Pop(vibration_value);
+        // Each request is the whole rumble state, so only the newest matters: sending one per
+        // loop (~3-5 ms each) let a burst play up to six states late.
+        if (VibrationValue vibration_value; vibration_queue.Pop(vibration_value)) {
+            while (vibration_queue.Pop(vibration_value)) {
+            }
             last_vibration_result = rumble_protocol->SendVibration(vibration_value);
-        }
-
-        // We can't keep up with vibrations. Start skipping.
-        while (vibration_queue.Size() > 6) {
-            vibration_queue.Pop();
         }
 
         std::this_thread::yield();
