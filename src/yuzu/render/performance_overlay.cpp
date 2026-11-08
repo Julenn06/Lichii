@@ -117,7 +117,7 @@ void PerformanceOverlay::updateStats(const Core::PerfStatsResults& results,
 
         // For the average only go back 10 samples max
         if (m_fpsSamples.size() >= 2) {
-            const int back_search = std::min(size_t(10), m_fpsSamples.size() - 1);
+            const int back_search = static_cast<int>(std::min(size_t(10), m_fpsSamples.size() - 1));
             double sum = std::accumulate(m_fpsSamples.end() - back_search, m_fpsSamples.end(), 0.0);
             double avg = sum / back_search;
 
@@ -166,7 +166,8 @@ void PerformanceOverlay::updateStats(const Core::PerfStatsResults& results,
 
         // For the average only go back 10 samples max
         if (m_frametimeSamples.size() >= 2) {
-            const int back_search = std::min(size_t(10), m_frametimeSamples.size() - 1);
+            const int back_search =
+                static_cast<int>(std::min(size_t(10), m_frametimeSamples.size() - 1));
             double sum = std::accumulate(m_frametimeSamples.end() - back_search,
                                          m_frametimeSamples.end(), 0.0);
             double avg = sum / back_search;
