@@ -333,7 +333,7 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 constexpr int default_mouse_hide_timeout = 2500;
 // Controllers are pumped every millisecond while a game runs (input latency) and every 8 ms in the
 // menus, where 1 ms woke the GUI thread ~1000 times a second for nothing.
-constexpr int default_input_update_timeout = 1;
+constexpr int default_input_update_timeout = 8;
 constexpr int running_input_update_timeout = 1;
 constexpr int EmuThreadStopTimeoutMs = 10'000;
 
@@ -505,6 +505,7 @@ MainWindow::MainWindow(bool has_broken_vulkan)
     connect(ui->menubar, &QMenuBar::hovered, this, &MainWindow::ShowMouseCursor);
 
     update_input_timer.setInterval(default_input_update_timeout);
+    update_input_timer.setTimerType(Qt::PreciseTimer);
     connect(&update_input_timer, &QTimer::timeout, this, &MainWindow::UpdateInputDrivers);
     update_input_timer.start();
 
@@ -1986,29 +1987,6 @@ void MainWindow::BootGame(const QString& filename, Service::AM::FrontendAppletPa
     }
     if (boot_in_progress || close_pending) {
         return;
-    }
-    // Handheld mode with nothing on the handheld slot: the game polls the handheld controller and
-    // ignores Player 1's Pro Controller, which still works in Settings. Use docked mode instead.
-    if (!Settings::IsDockedMode()) {
-        auto& hid = QtCommon::system->HIDCore();
-        const auto* const player_1 = hid.GetEmulatedController(Core::HID::NpadIdType::Player1);
-        const auto* const handheld = hid.GetEmulatedController(Core::HID::NpadIdType::Handheld);
-        if (!handheld->IsConnected() && player_1->IsConnected()) {
-            LOG_WARNING(Frontend, "Handheld mode without a handheld controller: using docked mode");
-            Settings::values.use_docked_mode.SetValue(Settings::ConsoleMode::Docked);
-            UpdateDockedButton();
-        }
-    }
-    {
-        // Which emulated controllers the game will see, to diagnose "works in Settings only".
-        auto& hid = QtCommon::system->HIDCore();
-        for (const auto id : {Core::HID::NpadIdType::Player1, Core::HID::NpadIdType::Player2,
-                              Core::HID::NpadIdType::Handheld}) {
-            const auto* const controller = hid.GetEmulatedController(id);
-            LOG_INFO(Frontend, "Controller {}: connected={} style={} docked={}",
-                     static_cast<int>(id), controller->IsConnected(),
-                     static_cast<int>(controller->GetNpadStyleIndex()), Settings::IsDockedMode());
-        }
     }
     boot_in_progress = true;
     game_list->SetScanEnabled(false);
