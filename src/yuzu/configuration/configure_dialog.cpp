@@ -33,6 +33,12 @@
 #include "yuzu/configuration/configure_web.h"
 #include "yuzu/hotkeys.h"
 
+namespace {
+// The page and tab the settings were left on, reopened next time during this session.
+int last_page = 0;
+int last_tab = 0;
+} // namespace
+
 ConfigureDialog::ConfigureDialog(QWidget* parent, HotkeyRegistry& registry_,
                                  InputCommon::InputSubsystem* input_subsystem,
                                  std::vector<VkDeviceInfo::Record>& vk_device_records,
@@ -112,13 +118,19 @@ ConfigureDialog::ConfigureDialog(QWidget* parent, HotkeyRegistry& registry_,
     }
 
     adjustSize();
-    ui->selectorList->setCurrentRow(0);
+    const bool reopen = last_page > 0 && last_page < ui->selectorList->count();
+    ui->selectorList->setCurrentRow(reopen ? last_page : 0);
+    if (reopen && last_tab > 0 && last_tab < ui->tabWidget->count()) {
+        ui->tabWidget->setCurrentIndex(last_tab);
+    }
 
     // Selects the leftmost button on the bottom bar (Cancel as of writing)
     ui->buttonBox->setFocus();
 }
 
 ConfigureDialog::~ConfigureDialog() {
+    last_page = ui->selectorList->currentRow();
+    last_tab = ui->tabWidget->currentIndex();
     // The tabs belong to their unique_ptrs, not to the scroll areas around them.
     for (auto& [tab, area] : scroll_areas) {
         area->takeWidget();
