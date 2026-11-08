@@ -13,6 +13,7 @@
 #include "common/fs/fs.h"
 #include "common/fs/path_util.h"
 #include "common/logging.h"
+#include "common/nx2_env.h"
 #include "common/scm_rev.h"
 #include "common/cpu_features.h"
 #include "core/memory.h"
@@ -236,7 +237,7 @@ void Init(QWidget* root) {
     const auto build_id = std::string(Common::g_build_id);
 
     const auto yuzu_build =
-        std::string_view{Common::g_build_version}.starts_with("Frizti v")
+        Common::IsFriztiBuild()
             ? fmt::format("Lichii {} | {}-{}", Common::g_build_version, branch_name, description)
             : fmt::format("Lichii Development Build | {}-{}", branch_name, description);
     const auto override_build =
@@ -247,6 +248,7 @@ void Init(QWidget* root) {
     // info logging
     LOG_INFO(Frontend, "Lichii Version: {}", yuzu_build_version);
     LogRuntimes();
+    Common::Nx2Env::ValidateEnvironment();
 #ifdef ARCHITECTURE_x86_64
     const auto& caps = Common::g_cpu_caps;
     std::string cpu_string = caps.cpu_string;

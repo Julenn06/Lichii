@@ -17,6 +17,7 @@
 #include <cstring>
 #include <string>
 
+#include "common/nx2_env.h"
 #include "common/dkb_cpu_trace.h"
 #include "common/logging.h"
 #include "common/settings.h"
@@ -480,8 +481,8 @@ size_t GpuSplit::MaxRangedWrites() {
     // oldest then counted for every semaphore acquire and macro memory read, which waited for
     // the back to reach it.
     static const size_t max = [] {
-        const char* const value = std::getenv("EDEN_NX2_RANGED_MAX");
-        return value != nullptr ? (std::max<size_t>)(std::strtoull(value, nullptr, 10), 1) : 256;
+        return (std::max<size_t>)(
+            static_cast<size_t>(Common::Nx2Env::UnsignedOr("EDEN_NX2_RANGED_MAX", 256)), 1);
     }();
     return max;
 }

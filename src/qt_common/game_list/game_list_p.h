@@ -81,6 +81,11 @@ public:
     static constexpr int ProgramIdRole = SortRole + 3;
     static constexpr int FileTypeRole = SortRole + 4;
 
+    /// Switch 2 titles use the 0x04 program id range (Switch 1 titles 0x01).
+    static bool IsSwitch2ProgramId(u64 program_id) {
+        return (program_id >> 56) == 0x04;
+    }
+
     GameListItemPath() = default;
     GameListItemPath(const QString& game_path, const std::vector<u8>& picture_data,
                      const QString& game_name, const QString& game_type, u64 program_id,
@@ -108,7 +113,10 @@ public:
             return QObject::tr("Version: 1.0.0");
         }();
 
-        const auto tooltip = QStringLiteral("%1\n%2").arg(readable_play_time, enabled_update);
+        auto tooltip = QStringLiteral("%1\n%2").arg(readable_play_time, enabled_update);
+        if (IsSwitch2ProgramId(program_id)) {
+            tooltip += QLatin1Char('\n') + QObject::tr("Nintendo Switch 2 game");
+        }
 
         setData(tooltip, Qt::ToolTipRole);
 

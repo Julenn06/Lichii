@@ -7,6 +7,7 @@
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <chrono>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -15,6 +16,7 @@
 #include <optional>
 #include <span>
 #include <stdexcept>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -35,6 +37,21 @@
 
 namespace FileSys::Nup {
 namespace {
+
+// Replaces `to` with `from`. On Windows an antivirus or the search indexer often holds a file
+// that was just written for a moment, which fails the rename with "access denied": retry for
+// about a second before giving up.
+void ReplaceArchive(const std::filesystem::path& from, const std::filesystem::path& to,
+                 std::error_code& ec) {
+    for (int attempt = 0;; ++attempt) {
+        std::filesystem::rename(from, to, ec);
+        if (!ec || attempt == 10 || ec == std::errc::no_such_file_or_directory) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{100});
+    }
+}
+
 
 using Json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -942,7 +959,7 @@ public:
 
         Finish();
         out.Close();
-        fs::rename(part, archive, ec);
+        ReplaceArchive(part, archive, ec);
         if (ec) {
             throw PackError(PackResult::IoError, "cannot rename archive: " + ec.message());
         }
@@ -1860,7 +1877,7 @@ PackResult UpdateMetadata(const fs::path& archive, const MetadataUpdate& update,
         return fail(PackResult::IoError, "cannot preserve original archive permissions");
     }
     file.Close();
-    fs::rename(temp, archive, ec);
+    ReplaceArchive(temp, archive, ec);
     if (ec) {
         return fail(PackResult::IoError, "cannot replace NUP archive: " + ec.message());
     }
@@ -2525,7 +2542,7 @@ EditResult EditNupMetadata(const fs::path& archive, const MetadataEdit& edit,
     }
 
     std::error_code rename_ec;
-    fs::rename(part, archive, rename_ec);
+    ReplaceArchive(part, archive, rename_ec);
     if (rename_ec) {
         std::error_code rm_ec;
         fs::remove(part, rm_ec);

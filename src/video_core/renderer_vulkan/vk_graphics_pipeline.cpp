@@ -19,6 +19,7 @@
 
 #include "video_core/renderer_vulkan/pipeline_helper.h"
 
+#include "common/log_repeat.h"
 #include "common/bit_field.h"
 #include "common/scope_exit.h"
 #include "video_core/renderer_vulkan/maxwell_to_vk.h"
@@ -538,9 +539,9 @@ bool GraphicsPipeline::ConfigureImpl(bool is_indexed) {
                 const u32 raw{evaluate(align_storage ? storage_alignment : 1)};
                 if (raw == 0) {
                     ++zero_texture_handles;
-                    static std::set<std::pair<u64, u32>> logged;
+                    static Common::Log::LoggedKeys<std::pair<u64, u32>> logged{64};
                     const std::pair key_program{key.unique_hashes[stage + 1], desc.handle_program};
-                    if (logged.size() < 64 && logged.insert(key_program).second) {
+                    if (logged.First(key_program)) {
                         LOG_INFO(Render_Vulkan,
                                  "Texture handle program {} of stage {} (shader {:016x}) gave 0; "
                                  "aligned to {} it gives {:#x}, unaligned {:#x}",
@@ -1056,8 +1057,14 @@ void GraphicsPipeline::MakePipeline(VkRenderPass render_pass) {
         if (has_tess_stages) {
             // The Vulkan spec requires patch list IA topology be used with tessellation
             // shader stages. Forcing it fixes a crash on some drivers
-            LOG_WARNING(Render_Vulkan,
-                        "Patch topology not used with tessellation, using patch list");
+            // Once per pipeline: Ocarina of Time logged it 126 times in 20 minutes.
+            static std::atomic<u64> repeats{};
+            if (const u64 count = Common::Log::CountRepeat(repeats)) {
+                LOG_WARNING(Render_Vulkan,
+                            "Patch topology not used with tessellation, using patch list ({} "
+                            "pipelines so far)",
+                            count);
+            }
             input_assembly_topology = VK_PRIMITIVE_TOPOLOGY_PATCH_LIST;
         }
     }

@@ -8,10 +8,13 @@
 #include "fs.h"
 #include "qt_common/abstract/frontend.h"
 #include "qt_common/qt_string_lookup.h"
+#include "qt_common/util/translate.h"
 
 namespace fs = std::filesystem;
 
 namespace QtCommon::FS {
+
+QTCOMMON_TRANSLATION_CONTEXT("QtCommon::FS")
 
 void LinkRyujinx(std::filesystem::path& from, std::filesystem::path& to) {
     std::error_code ec;

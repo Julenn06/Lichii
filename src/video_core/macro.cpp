@@ -22,6 +22,7 @@
 
 #include "common/assert.h"
 #include "common/scope_exit.h"
+#include "common/log_repeat.h"
 #include "common/fs/fs.h"
 #include "common/fs/path_util.h"
 #include "common/settings.h"
@@ -1351,9 +1352,9 @@ void MacroEngine::Execute(Core::System& system, Engines::Maxwell3D& maxwell3d, u
     if (native_turing) {
         maxwell3d.RefreshParameters();
         const auto context = reinterpret_cast<std::uintptr_t>(this);
-        static std::unordered_set<std::uintptr_t> captured_contexts;
+        static Common::Log::LoggedKeys<std::uintptr_t> captured_contexts;
         static const bool capture = std::getenv("EDEN_NATIVE_FRAME_CAPTURE") != nullptr;
-        if (capture && captured_contexts.insert(context).second) {
+        if (capture && captured_contexts.First(context)) {
             std::ofstream dump("native-graphics-mme-" + std::to_string(context) + ".bin", std::ios::binary);
             dump.write(reinterpret_cast<const char*>(native_code.data()), sizeof(native_code));
         }

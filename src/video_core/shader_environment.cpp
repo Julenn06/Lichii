@@ -393,7 +393,25 @@ Tegra::Texture::TICEntry GenericEnvironment::ReadTextureInfo(GPUVAddr tic_addr, 
     const auto handle{Tegra::Texture::TexturePair(raw, via_header_index)};
     const u32 index{Tegra::Texture::TextureHeaderIndex(handle.first, tic_limit,
                                                        gpu_memory->UsesNativeTiling())};
-    ASSERT(index <= tic_limit);
+    if (index > tic_limit) {
+        // Past the table: what lies there is not a descriptor (Ocarina of Time read format 123
+        // from it). The texture cache binds a null image for the same index; describe a plain RGBA8 2D
+        // texture so the shader compiles against what it will sample, instead of garbage.
+        static std::atomic<u32> reports{};
+        if (reports.fetch_add(1, std::memory_order_relaxed) < 8) {
+            LOG_WARNING(HW_GPU, "Texture handle {:#x} -> index {} past the TIC limit {} (program {:#x})",
+                        raw, index, tic_limit, program_base);
+        }
+        Tegra::Texture::TICEntry fallback{};
+        fallback.format.Assign(Tegra::Texture::TextureFormat::A8B8G8R8);
+        fallback.r_type.Assign(Tegra::Texture::ComponentType::UNORM);
+        fallback.g_type.Assign(Tegra::Texture::ComponentType::UNORM);
+        fallback.b_type.Assign(Tegra::Texture::ComponentType::UNORM);
+        fallback.a_type.Assign(Tegra::Texture::ComponentType::UNORM);
+        fallback.texture_type.Assign(Tegra::Texture::TextureType::Texture2D);
+        fallback.normalized_coords.Assign(1);
+        return fallback;
+    }
     const GPUVAddr descriptor_addr{tic_addr + index * sizeof(Tegra::Texture::TICEntry)};
     Tegra::Texture::TICEntry entry;
     gpu_memory->ReadBlock(descriptor_addr, &entry, sizeof(entry));

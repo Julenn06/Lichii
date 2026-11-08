@@ -18,6 +18,7 @@
 
 #include "common/assert.h"
 #include "common/cityhash.h"
+#include "common/log_repeat.h"
 #include "shader_recompiler/frontend/maxwell/control_flow.h"
 #include "shader_recompiler/exception.h"
 #include "shader_recompiler/frontend/ampere/trap_guards.h"
@@ -171,8 +172,8 @@ bool ShaderCache::RefreshStages(std::array<u64, 6>& unique_hashes) try {
                 RememberRejection(*cpu_shader_addr);
                 // Once per program: which stage slot it is bound to, its header and the slot's
                 // registers (to tell how a pipeline with task/mesh programs is set up).
-                static std::unordered_set<GPUVAddr> described;
-                if (native && described.insert(shader_addr).second) {
+                static Common::Log::LoggedKeys<GPUVAddr> described{1024};
+                if (native && described.First(shader_addr)) {
                     std::array<u32, 5> header{};
                     gpu_memory->ReadBlockUnsafe(shader_addr, header.data(), sizeof(header));
                     std::array<u32, sizeof(shader_config) / sizeof(u32)> config{};
@@ -228,8 +229,8 @@ bool ShaderCache::RefreshStages(std::array<u64, 6>& unique_hashes) try {
     native.native_execution_failed = true;
     last_shaders_valid = false;
     // Each rejected program is logged once (the draws that use it keep failing quietly).
-    static std::unordered_set<std::string> logged;
-    if (logged.insert(error.what()).second) {
+    static Common::Log::LoggedKeys<std::string> logged{1024};
+    if (logged.First(error.what())) {
         LOG_ERROR(HW_GPU, "Native graphics shader rejected: {}", error.what());
     }
     // Once: show what the vertex stage has bound, to find where an unbound bank's data lives.

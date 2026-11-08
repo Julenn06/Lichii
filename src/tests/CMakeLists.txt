@@ -14,6 +14,7 @@ add_executable(tests
     core/nx2_present_pacer.cpp
     common/dkb_cpu_trace.cpp
     common/dkb_frame_trace.cpp
+    common/nx2_env.cpp
     audio_core/nx2_sysmix.cpp
     audio_core/sysmix_sink.cpp
     audio_core/sysmix_test_context.h

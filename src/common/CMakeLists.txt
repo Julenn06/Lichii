@@ -45,6 +45,9 @@ add_library(
     div_ceil.h
     dkb_cpu_trace.cpp
     dkb_cpu_trace.h
+    nx2_env.cpp
+    nx2_env.h
+    nx2_env_registry.inc
     nx2_sampler.cpp
     nx2_sampler.h
     dynamic_library.cpp
@@ -79,6 +82,7 @@ add_library(
     literals.h
     logging.cpp
     logging.h
+    log_repeat.h
     lz4_compression.cpp
     lz4_compression.h
     math_util.h

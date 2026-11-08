@@ -3,12 +3,17 @@
 
 #include "compress.h"
 #include "quazipfileinfo.h"
+#include "zip_dir.h"
 
 #include <QDirIterator>
 #include <quazipfile.h>
 
 /** This is a modified version of JlCompress **/
 namespace QtCommon::Compress {
+
+bool ZipDirectory(const QString& zip_path, const QString& dir) {
+    return compressDir(zip_path, dir);
+}
 
 bool compressDir(QString fileCompressed, QString dir, const Options& options,
                  QtCommon::QtProgressCallback callback) {

@@ -729,3 +729,41 @@ QGroupBox::indicator {
   height: 16px;
   width: 16px;
 }
+
+/* Lichii status bar: Ocarina of Time frame rate, out-of-date keys, Switch 2 mode */
+QPushButton#OotFpsStatusBarButton {
+    color: #656565;
+    border: 1px solid transparent;
+    background-color: transparent;
+    padding: 0px 3px 0px 3px;
+    text-align: center;
+}
+
+QPushButton#OotFpsStatusBarButton:hover {
+    border: 1px solid #76797C;
+}
+
+QPushButton#OotFpsStatusBarButton:checked {
+    color: #ff8040;
+}
+
+QPushButton#OotFpsStatusBarButton:!checked {
+    color: #40dd40;
+}
+
+QPushButton#KeysWarningStatusBarButton {
+    color: #ffb040;
+    font-weight: bold;
+    border: 1px solid transparent;
+    background-color: transparent;
+    padding: 0px 3px 0px 3px;
+}
+
+QPushButton#KeysWarningStatusBarButton:hover {
+    border: 1px solid #ffb040;
+}
+
+QLabel#Switch2ModeLabel {
+    color: #ff5560;
+    font-weight: bold;
+}

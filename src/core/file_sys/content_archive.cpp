@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <optional>
 #include <utility>
@@ -29,6 +30,46 @@ static u8 MasterKeyIdForKeyGeneration(u8 key_generation) {
     return std::max<u8>(key_generation, 1) - 1;
 }
 
+namespace {
+std::atomic<u32> missing_key_ncas{};
+std::atomic<u8> highest_missing_generation{};
+
+/// Logged per NCA, a firmware newer than the keys printed ~100 errors at every start. The
+/// first few stay errors; the rest go to Debug with a pointer to the count.
+void ReportMissingKey(const VirtualFile& file, u8 generation) {
+    u8 highest = highest_missing_generation.load(std::memory_order_relaxed);
+    while (generation > highest &&
+           !highest_missing_generation.compare_exchange_weak(highest, generation)) {
+    }
+    constexpr u32 Shown = 3;
+    const u32 count = missing_key_ncas.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (count <= Shown) {
+        LOG_ERROR(Loader, "Cannot decrypt {}: keys for gen 0x{:02X}+ required.", file->GetName(),
+                  generation);
+        if (count == Shown) {
+            LOG_ERROR(Loader, "More NCAs need newer keys; the rest are logged at Debug. Update "
+                              "prod.keys (Install Decryption Keys in the menu).");
+        }
+    } else {
+        LOG_DEBUG(Loader, "Cannot decrypt {}: keys for gen 0x{:02X}+ required.", file->GetName(),
+                  generation);
+    }
+}
+} // Anonymous namespace
+
+u32 NCA::MissingKeyCount() {
+    return missing_key_ncas.load(std::memory_order_relaxed);
+}
+
+u8 NCA::HighestMissingKeyGeneration() {
+    return highest_missing_generation.load(std::memory_order_relaxed);
+}
+
+void NCA::ResetMissingKeyCount() {
+    missing_key_ncas.store(0, std::memory_order_relaxed);
+    highest_missing_generation.store(0, std::memory_order_relaxed);
+}
+
 NCA::NCA(VirtualFile file_, const NCA* base_nca, bool allow_missing_base)
     : file(std::move(file_)), keys{Core::Crypto::KeyManager::Instance()} {
     if (file == nullptr) {
@@ -45,7 +86,7 @@ NCA::NCA(VirtualFile file_, const NCA* base_nca, bool allow_missing_base)
     // Ensure we have the proper key area keys to continue.
     const u8 master_key_id = MasterKeyIdForKeyGeneration(reader->GetKeyGeneration());
     if (!keys.HasKey(Core::Crypto::S128KeyType::KeyArea, master_key_id, reader->GetKeyIndex())) {
-        LOG_ERROR(Loader, "Cannot decrypt {}: keys for gen 0x{:02X}+ required.", file->GetName(), reader->GetKeyGeneration());
+        ReportMissingKey(file, reader->GetKeyGeneration());
         status = Loader::ResultStatus::ErrorMissingKeyAreaKey;
         return;
     }

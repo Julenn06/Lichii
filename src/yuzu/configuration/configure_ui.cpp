@@ -77,7 +77,8 @@ static void PopulateResolutionComboBox(QComboBox* screenshot_height, QWidget* pa
         resolutions.emplace(height_docked);
     }
 
-    screenshot_height->addItem(parent->tr("Auto", "Screenshot height option"));
+    screenshot_height->addItem(
+        QCoreApplication::translate("ConfigureUi", "Auto", "Screenshot height option"));
     for (const auto res : resolutions) {
         screenshot_height->addItem(QString::fromStdString(std::to_string(res)));
     }

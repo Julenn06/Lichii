@@ -15,6 +15,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSlider>
@@ -120,7 +121,17 @@ ConfigurePostProcessing::ConfigurePostProcessing(QWidget* parent) : QDialog(pare
         if (!accepted || name.trimmed().isEmpty()) {
             return;
         }
-        VideoCore::SaveFxPreset(name.trimmed().toStdString(), std::string());
+        const std::string trimmed = name.trimmed().toStdString();
+        if (!VideoCore::IsFxPresetName(trimmed)) {
+            QMessageBox::warning(this, tr("Save Preset"),
+                                 tr("Give the preset a name without an equals sign."));
+            return;
+        }
+        if (!VideoCore::SaveFxPreset(trimmed, std::string())) {
+            QMessageBox::warning(this, tr("Save Preset"),
+                                 tr("The preset could not be written to the presets folder."));
+            return;
+        }
         PopulatePresetCombo();
         RefreshPresetStatus();
     });
@@ -152,6 +163,11 @@ ConfigurePostProcessing::ConfigurePostProcessing(QWidget* parent) : QDialog(pare
 
     auto* actions = new QHBoxLayout();
 
+    // Before the Add Effect menu is built from the catalog: effects added to the folder since the
+    // last load were missing from it.
+    VideoCore::ReloadFxCatalog();
+    VideoCore::ReloadFxPresetCatalog();
+
     auto* add_button = new QPushButton(tr("Add Effect"), this);
     auto* add_menu = new QMenu(add_button);
     for (const auto& effect : VideoCore::GetFxCatalog()) {
@@ -179,8 +195,6 @@ ConfigurePostProcessing::ConfigurePostProcessing(QWidget* parent) : QDialog(pare
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::close);
     root->addWidget(buttons);
 
-    VideoCore::ReloadFxCatalog();
-    VideoCore::ReloadFxPresetCatalog();
     VideoCore::FxChain::Instance().LoadFromSettings();
     VideoCore::FxChain::Instance().DropUnknownEntries();
     PopulatePresetCombo();
@@ -268,6 +282,11 @@ void ConfigurePostProcessing::PopulateEffectCombo(QComboBox* combo,
 
     if (selected >= 0) {
         combo->setCurrentIndex(selected);
+    } else {
+        // The slot's effect is gone: say so instead of showing the first effect as if selected.
+        // No data, so choosing it changes nothing.
+        combo->insertItem(0, tr("Missing: %1").arg(QString::fromStdString(entry.file)));
+        combo->setCurrentIndex(0);
     }
 }
 
@@ -399,6 +418,7 @@ QWidget* ConfigurePostProcessing::BuildSlot(int index, const VideoCore::FxChainE
 
     auto* up_button = new QToolButton(group);
     up_button->setText(QStringLiteral("▲"));
+    up_button->setToolTip(tr("Move up"));
     up_button->setEnabled(index > 0);
     connect(up_button, &QToolButton::clicked, this, [this, index]() {
         VideoCore::FxChain::Instance().Move(static_cast<size_t>(index), -1);
@@ -408,6 +428,7 @@ QWidget* ConfigurePostProcessing::BuildSlot(int index, const VideoCore::FxChainE
 
     auto* down_button = new QToolButton(group);
     down_button->setText(QStringLiteral("▼"));
+    down_button->setToolTip(tr("Move down"));
     down_button->setEnabled(static_cast<size_t>(index) + 1 < VideoCore::FxChain::Instance().Size());
     connect(down_button, &QToolButton::clicked, this, [this, index]() {
         VideoCore::FxChain::Instance().Move(static_cast<size_t>(index), 1);
@@ -426,6 +447,7 @@ QWidget* ConfigurePostProcessing::BuildSlot(int index, const VideoCore::FxChainE
 
     auto* remove_button = new QToolButton(group);
     remove_button->setText(QStringLiteral("✕"));
+    remove_button->setToolTip(tr("Remove effect"));
     connect(remove_button, &QToolButton::clicked, this, [this, index]() {
         VideoCore::FxChain::Instance().Remove(static_cast<size_t>(index));
         ApplyStructuralChange();

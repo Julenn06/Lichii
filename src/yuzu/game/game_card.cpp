@@ -1,10 +1,36 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <algorithm>
+#include <cmath>
 #include <QPainter>
 #include <QPainterPath>
 #include "game_card.h"
 #include "qt_common/config/uisettings.h"
+#include "qt_common/game_list/game_list_p.h"
+
+namespace {
+// A small "SWITCH 2" pill in the icon's top-left corner.
+void DrawSwitch2Badge(QPainter* painter, const QRect& icon_rect, const QFont& base_font) {
+    QFont font = base_font;
+    font.setBold(true);
+    font.setPixelSize(std::max(9, icon_rect.height() / 14));
+    const QFontMetrics metrics{font};
+    const QString text = QStringLiteral("SWITCH 2");
+    const int pad_x = font.pixelSize() / 2;
+    const int pad_y = font.pixelSize() / 5;
+    const QRect badge{icon_rect.left() + 6, icon_rect.top() + 6,
+                      metrics.horizontalAdvance(text) + pad_x * 2, metrics.height() + pad_y * 2};
+    painter->save();
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(QColor(230, 0, 18, 235));
+    painter->drawRoundedRect(badge, badge.height() / 2.0, badge.height() / 2.0);
+    painter->setPen(Qt::white);
+    painter->setFont(font);
+    painter->drawText(badge, Qt::AlignCenter, text);
+    painter->restore();
+}
+} // namespace
 
 GameCard::GameCard(QObject* parent) : QStyledItemDelegate{parent} {
     setObjectName("GameCard");
@@ -59,6 +85,11 @@ void GameCard::paint(QPainter* painter, const QStyleOptionViewItem& option,
         painter->setClipPath(clip_path);
         painter->drawPixmap(iconRect, icon_pixmap);
         painter->restore();
+
+        const u64 program_id = index.data(GameListItemPath::ProgramIdRole).toULongLong();
+        if (icon_size >= 64 && GameListItemPath::IsSwitch2ProgramId(program_id)) {
+            DrawSwitch2Badge(painter, iconRect, option.font);
+        }
     } else {
         iconRect = {cardRect.left() + cardMargin, cardRect.top() + cardMargin,
                     static_cast<int>(icon_size), static_cast<int>(icon_size)};

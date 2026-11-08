@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <thread>
+#include "common/nx2_env.h"
 #include "common/nx2_timeline.h"
 #include "common/scope_exit.h"
 #include "common/settings.h"
@@ -231,10 +232,7 @@ void PhysicalCore::Idle(KernelCore& kernel) {
     // host's thread wake-up latency to every handoff. EDEN_NX2_IDLE_SPIN_US=<n>: poll for that
     // many microseconds before blocking. Switch 2 titles poll 100 us by default outside Android
     // (title 1's frames: 42 ms without, 35 ms with 50 us, 34 ms with 100 us, 36 ms with 300 us).
-    static const long long spin_setting = [] {
-        const char* text = std::getenv("EDEN_NX2_IDLE_SPIN_US");
-        return text ? std::strtoll(text, nullptr, 10) : -1LL;
-    }();
+    static const long long spin_setting = Common::Nx2Env::Signed("EDEN_NX2_IDLE_SPIN_US", -1);
     long long spin_us = spin_setting;
     if (spin_us < 0) {
 #ifdef __ANDROID__

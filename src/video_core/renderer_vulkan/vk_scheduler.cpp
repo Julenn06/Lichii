@@ -20,6 +20,7 @@
 
 #include "video_core/renderer_vulkan/vk_query_cache.h"
 
+#include "common/nx2_env.h"
 #include "common/logging.h"
 #include "common/settings.h"
 #include "common/dkb_cpu_trace.h"
@@ -187,9 +188,8 @@ bool Scheduler::DeferFlush() {
     // Command list copies after dispatches were ~9,000 more a second, of which the front waited
     // for about 5%.
     static const s64 interval_us = [] {
-        const char* value = std::getenv("EDEN_NX2_FENCE_FLUSH_US");
-        if (value != nullptr) {
-            return static_cast<s64>(std::atoll(value));
+        if (Common::Nx2Env::Raw("EDEN_NX2_FENCE_FLUSH_US") != nullptr) {
+            return Common::Nx2Env::Signed("EDEN_NX2_FENCE_FLUSH_US", 0);
         }
         // 0 by default (EvilOOT's flash fix): Ocarina of Time flashed white with the 500 us batch
         // (sword boulder with preflush: 31 whole-screen flashes in 30 s, 0 without), and ran
@@ -242,7 +242,8 @@ bool Scheduler::WaitSubmitted(u64 tick) {
         if (spins < 64) {
             std::this_thread::yield();
         } else {
-            std::this_thread::sleep_for(std::chrono::microseconds{50});
+            // Woken as soon as the back submits; the timeout rechecks BackRunning and the log.
+            master_semaphore->WaitForTick(tick, std::chrono::milliseconds{1});
         }
     }
     return true;

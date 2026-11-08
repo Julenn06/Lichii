@@ -39,12 +39,18 @@ public:
         }
         const size_t as_id = memory.GetID();
         const u64 key = MakeKey(as_id, gpu_addr);
+        // Unmap only hears about pages that change between mapped and unmapped: a page mapped
+        // again to other memory (sparse tiles, a map over a mapping) bumps only the serial. Read
+        // before the walk, so a change during it makes the next query walk again.
+        const u64 serial = memory.MapSerial();
         const auto it = entries.find(key);
         if (it != entries.end() && it->second.as_id == as_id &&
-            it->second.gpu_addr == gpu_addr && it->second.size == size) {
+            it->second.gpu_addr == gpu_addr && it->second.size == size &&
+            it->second.serial == serial) {
             return &it->second.segments;
         }
         Entry entry{};
+        entry.serial = serial;
         entry.as_id = as_id;
         entry.gpu_addr = gpu_addr;
         entry.size = size;
@@ -110,6 +116,7 @@ public:
 private:
     struct Entry {
         VirtualSegments segments;
+        u64 serial{}; ///< MemoryManager::MapSerial() the segments were read at
         size_t as_id{};
         GPUVAddr gpu_addr{};
         u32 size{};
@@ -140,6 +147,12 @@ private:
             return;
         }
         if (pending.empty() || entries.empty()) {
+            return;
+        }
+        // Every entry against every unmap: past this, dropping them all is cheaper (entries are
+        // rebuilt on demand).
+        if (pending.size() * entries.size() > (1U << 20)) {
+            entries.clear();
             return;
         }
         for (auto it = entries.begin(); it != entries.end();) {

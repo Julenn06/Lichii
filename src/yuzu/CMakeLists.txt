@@ -224,6 +224,9 @@ add_executable(yuzu
     yuzu.rc
     migration_dialog.h migration_dialog.cpp
     nup_dialogs.h nup_dialogs.cpp
+    nx2_switches_dialog.h nx2_switches_dialog.cpp
+    bug_report.h bug_report.cpp
+    oot_frame_rate.h oot_frame_rate.cpp
     migration_worker.h migration_worker.cpp
     libqt_common.h libqt_common.cpp
 
@@ -454,7 +457,12 @@ if (WIN32 AND NOT YUZU_USE_BUNDLED_QT)
     endif()
     if (WINDEPLOYQT_EXECUTABLE)
         set(YUZU_EXE_DIR "$<TARGET_FILE_DIR:yuzu>")
-        add_custom_command(TARGET yuzu POST_BUILD COMMAND ${WINDEPLOYQT_EXECUTABLE} "$<TARGET_FILE:yuzu>" --dir "${YUZU_EXE_DIR}" --libdir "${YUZU_EXE_DIR}" --plugindir "${YUZU_EXE_DIR}/plugins" --no-compiler-runtime --no-opengl-sw --no-system-d3d-compiler --no-translations --verbose 0)
+        add_custom_command(TARGET yuzu POST_BUILD COMMAND ${WINDEPLOYQT_EXECUTABLE} "$<TARGET_FILE:yuzu>" --dir "${YUZU_EXE_DIR}" --libdir "${YUZU_EXE_DIR}" --plugindir "${YUZU_EXE_DIR}/plugins" --no-compiler-runtime --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler --no-translations --verbose 0)
+        # Qt only looks for plugins next to the executable or in its own install folder: without
+        # this the deployed folder started only on the machine that built it ("no Qt platform
+        # plugin could be initialized" anywhere else).
+        file(GENERATE OUTPUT "$<TARGET_FILE_DIR:yuzu>/qt.conf"
+             CONTENT "[Paths]\nPlugins = plugins\n")
     else()
         message(WARNING "windeployqt not found: copy the Qt DLLs next to the executable yourself")
     endif()

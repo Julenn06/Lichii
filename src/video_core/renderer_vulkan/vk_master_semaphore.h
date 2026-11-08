@@ -7,6 +7,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -45,7 +46,28 @@ public:
 
     /// Advance to the logical tick and return the old one
     [[nodiscard]] u64 NextTick() noexcept {
-        return current_tick.fetch_add(1, std::memory_order_release);
+        // seq_cst pairs with WaitForTick: either the waiter sees the new tick or this sees it.
+        const u64 tick = current_tick.fetch_add(1, std::memory_order_seq_cst);
+        if (tick_waiters.load(std::memory_order_seq_cst) != 0) {
+            { std::scoped_lock lock{tick_mutex}; }
+            tick_cv.notify_all();
+        }
+        return tick;
+    }
+
+    /// Waits up to timeout until tick has been handed to the worker (CurrentTick() > tick).
+    /// Woken by NextTick, so it returns as soon as that happens instead of after a sleep, which
+    /// Windows rounds up to a whole millisecond.
+    bool WaitForTick(u64 tick, std::chrono::microseconds timeout) {
+        if (tick < CurrentTick()) {
+            return true;
+        }
+        tick_waiters.fetch_add(1, std::memory_order_seq_cst);
+        std::unique_lock lock{tick_mutex};
+        const bool done = tick_cv.wait_for(lock, timeout, [&] { return tick < CurrentTick(); });
+        lock.unlock();
+        tick_waiters.fetch_sub(1, std::memory_order_relaxed);
+        return done;
     }
 
     /// Refresh the known GPU tick
@@ -75,6 +97,9 @@ private:
     vk::Semaphore semaphore;          ///< Timeline semaphore.
     std::atomic<u64> gpu_tick{0};     ///< Current known GPU tick.
     std::atomic<u64> current_tick{1}; ///< Current logical tick.
+    std::atomic<u32> tick_waiters{0}; ///< Threads in WaitForTick.
+    std::mutex tick_mutex;
+    std::condition_variable tick_cv;
     std::mutex wait_mutex;
     std::mutex free_mutex;
     std::condition_variable_any wait_cv;

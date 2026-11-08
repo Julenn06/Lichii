@@ -476,7 +476,11 @@ jobs:
               throw "build/release/bin/$exe was not produced"
             }
           }
-          windeployqt --release --no-translations build/release/bin/lichii.exe
+          # Lichii renders through Vulkan and Qt Widgets: Qt's software OpenGL (opengl32sw.dll,
+          # 20 MB) and the Direct3D / DXC shader compilers (D3Dcompiler_47.dll, dxcompiler.dll,
+          # dxil.dll, 26 MB) are only for Qt Quick/RHI and were shipped unused.
+          windeployqt --release --no-translations --no-opengl-sw --no-system-d3d-compiler `
+            --no-system-dxc-compiler build/release/bin/lichii.exe
 
       # A dynamic MinGW build is not portable on its own: windeployqt6 brings the Qt libraries and
       # plugins, then every non-system DLL the binaries and those plugins pull in gets copied next to

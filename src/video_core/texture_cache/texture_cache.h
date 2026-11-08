@@ -18,6 +18,7 @@
 #include <boost/container/small_vector.hpp>
 
 #include "common/alignment.h"
+#include "common/nx2_env.h"
 #include "common/scope_exit.h"
 #include "common/settings.h"
 #include "common/slot_vector.h"
@@ -194,6 +195,11 @@ void TextureCache<P>::RunGarbageCollector() {
     // emptiest blocks go first, so blocks drain and go back to the driver; placement already
     // prefers the fullest blocks (best fit). Images with memory of their own sit in the middle.
     const auto Collect = [&] {
+        // frame_tick - ticks_to_destroy wraps in the first frames: every image, the ones this
+        // frame uses too, would count as old.
+        if (frame_tick <= ticks_to_destroy) {
+            return;
+        }
         if constexpr (requires(const Image& image) { image.MemoryBlock(); }) {
             std::vector<ImageId> candidates;
             const size_t limit = num_iterations * 8;
@@ -239,10 +245,7 @@ void TextureCache<P>::RunGarbageCollector() {
         }
     };
     Configure(false);
-    static const u64 old_age = [] {
-        const char* value = std::getenv("EDEN_NX2_TC_OLD_AGE");
-        return value != nullptr ? std::strtoull(value, nullptr, 10) : 1800ULL;
-    }();
+    static const u64 old_age = Common::Nx2Env::UnsignedOr("EDEN_NX2_TC_OLD_AGE", 1800);
     if (high_priority_mode && old_age != 0 && frame_tick > old_age) {
         evict_old_costly = true;
         lru_cache.ForEachItemBelow(frame_tick - old_age, Cleanup);
@@ -268,8 +271,9 @@ void TextureCache<P>::ApplyThresholdOverrides(bool log) {
     // EDEN_NX2_TC_EXPECTED_MIB / EDEN_NX2_TC_CRITICAL_MIB override the collector's thresholds.
     for (const auto& [name, target] : {std::pair{"EDEN_NX2_TC_EXPECTED_MIB", &expected_memory},
                                        std::pair{"EDEN_NX2_TC_CRITICAL_MIB", &critical_memory}}) {
-        if (const char* value = std::getenv(name)) {
-            *target = std::strtoull(value, nullptr, 10) << 20;
+        // A malformed value or 0 would collect every texture each frame; keep the computed one.
+        if (const auto mib = Common::Nx2Env::Unsigned(name); mib && *mib != 0) {
+            *target = *mib << 20;
         }
     }
     if (log) {
@@ -295,8 +299,12 @@ void TextureCache<P>::TickFrame() {
         if (!native_thresholds_applied && gpu_memory != nullptr && gpu_memory->UsesNativeTiling()) {
             native_thresholds_applied = true;
             const u64 device_local = runtime.GetDeviceLocalMemory();
-            critical_memory = (std::max)(critical_memory, device_local - 256_MiB);
-            expected_memory = (std::max)(expected_memory, device_local - 1280_MiB);
+            // A driver reporting little or no local memory (some integrated GPUs) would wrap
+            // these to huge thresholds and the collector would never run.
+            if (device_local > 2_GiB) {
+                critical_memory = (std::max)(critical_memory, device_local - 256_MiB);
+                expected_memory = (std::max)(expected_memory, device_local - 1280_MiB);
+            }
             ApplyThresholdOverrides();
             native_critical_memory = critical_memory;
             native_expected_memory = expected_memory;
@@ -350,13 +358,20 @@ void TextureCache<P>::TickFrame() {
                         budget - (std::min)(margin + pressure_margin + slack_margin, budget / 2);
                     expected_memory = critical_memory - (std::min)(margin, critical_memory / 2);
                     // Log the first values and real changes (the budget moves by a few MiB all
-                    // the time).
+                    // the time). Compare after the cap and overrides: old_critical was capped
+                    // too, so comparing the raw value logged every check once the budget sat
+                    // above MaxCriticalMemory.
+                    ApplyThresholdOverrides(false);
                     const u64 change = critical_memory > old_critical
                                            ? critical_memory - old_critical
                                            : old_critical - critical_memory;
                     const bool log = budget_check_frames == 1 || change >= 256_MiB;
-                    ApplyThresholdOverrides(log);
                     if (log) {
+                        LOG_INFO(HW_GPU,
+                                 "Texture cache thresholds: expected {} MiB, critical {} MiB, "
+                                 "minimum {} MiB",
+                                 expected_memory >> 20, critical_memory >> 20,
+                                 minimum_memory >> 20);
                         LOG_INFO(HW_GPU,
                                  "Memory margins: base {} MiB, out of memory {} MiB, block slack {} MiB",
                                  margin >> 20, pressure_margin >> 20, slack_margin >> 20);
@@ -1069,10 +1084,9 @@ void TextureCache<P>::UnmapGPUMemory(size_t as_id, GPUVAddr gpu_addr, size_t siz
                 UntrackImage(image, id);
             }
         }
-        image.dirty_layers.clear(); // all of it
-        if (True(image.flags & ImageFlagBits::Remapped)) {
-            continue;
-        }
+        // All of it: partial layers or ranges left from before would upload only those.
+        image.dirty_layers.clear();
+        image.dirty_ranges.clear();
         image.flags |= ImageFlagBits::Remapped;
     }
 }
@@ -2482,7 +2496,14 @@ void TextureCache<P>::TickAsyncUnswizzle() {
     const u32 slices_submitted = static_cast<u32>(task.last_submitted_offset / task.bytes_per_slice);
     const bool all_slices_submitted = slices_submitted >= image.info.size.depth;
 
-    if (is_final_batch && all_slices_submitted) {
+    // All read but less than a slice left over (a size that is not a whole number of slices):
+    // finish rather than wait forever with the queue and the image's IsDecoding stuck.
+    const bool stuck = is_final_batch && !all_slices_submitted && complete_slices == 0;
+    if (stuck) {
+        LOG_WARNING(HW_GPU, "GPU unswizzle of {:#x} ended {} of {} slices in", image.gpu_addr,
+                    slices_submitted, image.info.size.depth);
+    }
+    if (is_final_batch && (all_slices_submitted || stuck)) {
         runtime.FreeDeferredStagingBuffer(task.staging_buffer);
         image.flags &= ~ImageFlagBits::IsDecoding;
         unswizzle_queue.pop_front();
@@ -3473,6 +3494,17 @@ void TextureCache<P>::DeleteImage(ImageId image_id, bool immediate_delete) {
         if (async_decode->image_id == image_id) {
             async_decode->cancelled = true;
         }
+    }
+    // The same for GPU unswizzles: one left queued would upload into the image that takes the slot.
+    for (auto it = unswizzle_queue.begin(); it != unswizzle_queue.end();) {
+        if (it->image_id != image_id) {
+            ++it;
+            continue;
+        }
+        if (it->initialized) {
+            runtime.FreeDeferredStagingBuffer(it->staging_buffer);
+        }
+        it = unswizzle_queue.erase(it);
     }
     if (image.HasScaled()) {
         total_used_memory -= GetScaledImageSizeBytes(image);

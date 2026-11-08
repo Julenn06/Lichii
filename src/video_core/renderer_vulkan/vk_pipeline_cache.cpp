@@ -22,6 +22,7 @@
 #include <bit>
 #include <cstring>
 #include <numeric>
+#include "common/nx2_env.h"
 #include "common/cityhash.h"
 #include "common/scope_exit.h"
 #include "common/fs/fs.h"
@@ -744,8 +745,8 @@ bool BackgroundPipelinesEnabled() {
 }
 
 size_t BackgroundPipelineThreads() {
-    if (const char* value = std::getenv("EDEN_NX2_BACKGROUND_PIPELINE_THREADS")) {
-        return std::clamp<size_t>(static_cast<size_t>(std::strtoull(value, nullptr, 10)), 1, 16);
+    if (const auto threads = Common::Nx2Env::Unsigned("EDEN_NX2_BACKGROUND_PIPELINE_THREADS")) {
+        return std::clamp<size_t>(static_cast<size_t>(*threads), 1, 16);
     }
     return std::clamp<size_t>(std::thread::hardware_concurrency() / 4, 1, 6);
 }
@@ -1426,8 +1427,10 @@ void ReportNewPipelineKey(const GraphicsPipelineCacheKey& key) {
     if (!enabled) {
         return;
     }
+    static std::mutex mutex;
     static std::unordered_map<u64, GraphicsPipelineCacheKey> last_by_shaders;
     static u32 logged{};
+    std::scoped_lock lock{mutex};
     const u64 shaders = Common::CityHash64(reinterpret_cast<const char*>(key.unique_hashes.data()),
                                            sizeof(key.unique_hashes));
     const auto [it, first] = last_by_shaders.try_emplace(shaders, key);
@@ -1528,11 +1531,8 @@ void PipelineCache::EvictUnusedPipelines() {
     // its place is revisited (~10 ms). Ocarina of Time kept ~1,900 of them and evicted 3,400 in
     // 25 minutes of play, then rebuilt 1,850 (14 s of stalls, 3.8 s in one 10 s window). 8,000
     // pipelines are ~3.6 GB of driver memory at most. EDEN_NX2_PIPELINE_EVICT_ABOVE sets it.
-    static const size_t evict_above = [] {
-        const char* value = std::getenv("EDEN_NX2_PIPELINE_EVICT_ABOVE");
-        return value != nullptr ? static_cast<size_t>(std::strtoull(value, nullptr, 10))
-                                : size_t{8000};
-    }();
+    static const size_t evict_above =
+        static_cast<size_t>(Common::Nx2Env::UnsignedOr("EDEN_NX2_PIPELINE_EVICT_ABOVE", 8000));
     if (graphics_cache.size() <= evict_above) {
         return;
     }

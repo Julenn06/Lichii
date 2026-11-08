@@ -764,3 +764,41 @@ QDialog#QtSoftwareKeyboardDialog QPushButton#button_space:disabled,
 QDialog#QtSoftwareKeyboardDialog QPushButton#button_space_shift:disabled {
     image: url(:/overlay/osk_button_Y_disabled.png);
 }
+
+/* Lichii status bar: Ocarina of Time frame rate, out-of-date keys, Switch 2 mode */
+QPushButton#OotFpsStatusBarButton {
+    color: #656565;
+    border: 1px solid transparent;
+    background-color: transparent;
+    padding: 0px 3px 0px 3px;
+    text-align: center;
+}
+
+QPushButton#OotFpsStatusBarButton:hover {
+    border: 1px solid #76797C;
+}
+
+QPushButton#OotFpsStatusBarButton:checked {
+    color: #b06020;
+}
+
+QPushButton#OotFpsStatusBarButton:!checked {
+    color: #109010;
+}
+
+QPushButton#KeysWarningStatusBarButton {
+    color: #b06000;
+    font-weight: bold;
+    border: 1px solid transparent;
+    background-color: transparent;
+    padding: 0px 3px 0px 3px;
+}
+
+QPushButton#KeysWarningStatusBarButton:hover {
+    border: 1px solid #b06000;
+}
+
+QLabel#Switch2ModeLabel {
+    color: #d0000f;
+    font-weight: bold;
+}

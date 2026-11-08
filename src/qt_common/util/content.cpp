@@ -20,8 +20,11 @@
 #include <QFuture>
 #include <QFutureWatcher>
 #include <QtConcurrentRun>
+#include "qt_common/util/translate.h"
 
 namespace QtCommon::Content {
+
+QTCOMMON_TRANSLATION_CONTEXT("QtCommon::Content")
 
 bool CheckGameFirmware(u64 program_id) {
     if (FirmwareManager::GameRequiresFirmware(program_id) &&

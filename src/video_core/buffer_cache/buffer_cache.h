@@ -17,6 +17,7 @@
 #include <vector>
 #include <fmt/ranges.h>
 
+#include "common/log_repeat.h"
 #include "common/range_sets.inc"
 #include "video_core/buffer_cache/buffer_cache_base.h"
 #include "video_core/buffer_cache/multi_range_refresh.h"
@@ -786,9 +787,13 @@ bool BufferCache<P>::BindGraphicsStorageBuffer(size_t stage, size_t ssbo_index, 
         if (runtime.ShouldLimitDynamicStorageBuffers() && !already_enabled) {
             const u32 max_bindings = runtime.GetMaxDynamicStorageBuffers();
             if (channel_state->total_graphics_storage_buffers >= max_bindings) {
-                LOG_WARNING(HW_GPU,
-                            "Skipping graphics storage buffer {} due to driver limit {}",
-                            ssbo_index, max_bindings);
+                static std::atomic<u64> skipped{};
+                if (const u64 count = Common::Log::CountRepeat(skipped)) {
+                    LOG_WARNING(HW_GPU,
+                                "Skipping graphics storage buffer {} due to driver limit {} ({} "
+                                "times)",
+                                ssbo_index, max_bindings, count);
+                }
                 return false;
             }
         }
@@ -881,9 +886,13 @@ void BufferCache<P>::BindComputeStorageBuffer(size_t ssbo_index, u32 cbuf_index,
         if (runtime.ShouldLimitDynamicStorageBuffers() && !already_enabled) {
             const u32 max_bindings = runtime.GetMaxDynamicStorageBuffers();
             if (channel_state->total_compute_storage_buffers >= max_bindings) {
-                LOG_WARNING(HW_GPU,
-                            "Skipping compute storage buffer {} due to driver limit {}",
-                            ssbo_index, max_bindings);
+                static std::atomic<u64> skipped{};
+                if (const u64 count = Common::Log::CountRepeat(skipped)) {
+                    LOG_WARNING(HW_GPU,
+                                "Skipping compute storage buffer {} due to driver limit {} ({} "
+                                "times)",
+                                ssbo_index, max_bindings, count);
+                }
                 return;
             }
         }
@@ -898,7 +907,11 @@ void BufferCache<P>::BindComputeStorageBuffer(size_t ssbo_index, u32 cbuf_index,
 
     const auto& launch_desc = kepler_compute->launch_description;
     if (((launch_desc.const_buffer_enable_mask >> cbuf_index) & 1) == 0) {
-        LOG_WARNING(HW_GPU, "Skipped binding SSBO: cbuf index {} is not enabled", cbuf_index);
+        static std::atomic<u64> skipped{};
+        if (const u64 count = Common::Log::CountRepeat(skipped)) {
+            LOG_WARNING(HW_GPU, "Skipped binding SSBO: cbuf index {} is not enabled ({} times)",
+                        cbuf_index, count);
+        }
         return;
     }
     ASSERT(((launch_desc.const_buffer_enable_mask >> cbuf_index) & 1) != 0);

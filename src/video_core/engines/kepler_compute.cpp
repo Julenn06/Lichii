@@ -19,6 +19,7 @@
 #include "common/assert.h"
 #include "common/dkb_frame_trace.h"
 #include "common/logging.h"
+#include "common/log_repeat.h"
 #include "common/scope_exit.h"
 #include "common/settings.h"
 #include "shader_recompiler/exception.h"
@@ -406,7 +407,7 @@ bool KeplerCompute::ProcessNativeMethod(Core::System& system, u32 method, u32 ar
                             const char* text = std::getenv("EDEN_NX2_SEM_WATCH");
                             return text ? u64{std::strtoull(text, nullptr, 16)} : u64{};
                         }();
-                        if (watch != 0 && (address & ~u64{0xf}) == watch) {
+                        if (watch != 0 && (address & ~u64{0xf}) == (watch & ~u64{0xf})) {
                             LOG_INFO(HW_GPU, "Semaphore watch: QMD release add {:#x} -> {:#x}", address, value);
                         }
                         VideoCommon::TraceNativeQuery(1, memory_manager.GetID(), address,
@@ -447,9 +448,9 @@ bool KeplerCompute::ProcessNativeMethod(Core::System& system, u32 method, u32 ar
         }
         // Log a failing program's first few dispatches only (QMD words 48-49 hold its code
         // address); it fails the same way every frame.
-        static std::unordered_map<u64, u32> failures;
+        static Common::Log::LoggedKeys<u64> failures{4096};
         const u64 program = (u64{qmd[49]} << 32) | qmd[48];
-        if (failures[program ^ std::hash<std::string>{}(std::string{error})]++ >= 2) {
+        if (!failures.Within(program ^ std::hash<std::string_view>{}(error), 2)) {
             return true;
         }
         LOG_ERROR(HW_GPU, "Native QMD failed: {}", error);
@@ -670,8 +671,8 @@ bool KeplerCompute::DispatchNativeCompute(const NativeQmdScheduler::Descriptor& 
         dlss_motion_vectors.reset();
         dlss_depth.reset();
         (void)fe_upscale_jitter.Take();
-        static std::unordered_set<std::string> logged;
-        if (logged.insert(error.what()).second) {
+        static Common::Log::LoggedKeys<std::string> logged{1024};
+        if (logged.First(error.what())) {
             LOG_ERROR(HW_GPU, "Native compute shader rejected: {}", error.what());
         }
         dispatched = false;
@@ -896,8 +897,12 @@ bool KeplerCompute::FinishDlssEvaluation() {
     if (dlss_chain.spatial_only) {
         dlss_chain.pending.clear();
         using namespace VideoCommon::FireEmblemUpscale;
+        static const std::string replacement = [] {
+            const char* const value = std::getenv("EDEN_NX2_DLSS_REPLACEMENT");
+            return std::string{value != nullptr ? value : ""};
+        }();
         if (UseReplacement(StarFoxProgramId, StarFoxOutputProgramKey,
-                           std::getenv("EDEN_NX2_DLSS_REPLACEMENT"))) {
+                           replacement.empty() ? nullptr : replacement.c_str())) {
             return TryFireEmblemUpscale(false);
         }
         dlss_motion_vectors.reset();

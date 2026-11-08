@@ -11,6 +11,7 @@
 #include "qt_common/abstract/frontend.h"
 #include "qt_common/config/uisettings.h"
 #include "qt_common/qt_common.h"
+#include "qt_common/util/translate.h"
 #include "video_core/pipeline_cache_files.h"
 
 #include <QDesktopServices>
@@ -29,6 +30,8 @@
 #endif
 
 namespace QtCommon::Game {
+
+QTCOMMON_TRANSLATION_CONTEXT("QtCommon::Game")
 
 bool CreateShortcutLink(const std::filesystem::path& shortcut_path, const std::string& comment,
                         const std::filesystem::path& icon_path,

@@ -3,6 +3,8 @@
 
 #include <array>
 #include <charconv>
+#include <cstdlib>
+#include <string>
 #include <thread>
 
 #include <boost/asio.hpp>
@@ -115,6 +117,16 @@ std::string HandleRequest(const Handlers& handlers, std::string_view line,
             throw std::runtime_error{"request is not an object"};
         }
         response["id"] = request.value("id", nlohmann::json{});
+        // EDEN_NX2_DEBUG_TOKEN=<secret>: every request must carry "token": "<secret>", so other
+        // local programs and users cannot drive the server (it already only listens on loopback).
+        static const std::string required_token = [] {
+            const char* const value = std::getenv("EDEN_NX2_DEBUG_TOKEN");
+            return value != nullptr ? std::string{value} : std::string{};
+        }();
+        if (!required_token.empty() &&
+            request.value("token", std::string{}) != required_token) {
+            throw std::runtime_error{"missing or wrong token (EDEN_NX2_DEBUG_TOKEN)"};
+        }
         const std::string method = request.value("method", std::string{});
         const auto it = handlers.find(method);
         if (it == handlers.end()) {

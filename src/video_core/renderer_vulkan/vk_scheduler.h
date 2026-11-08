@@ -203,14 +203,7 @@ public:
 
     /// Whether the recording thread submitted `tick` within 20 ms.
     [[nodiscard]] bool WaitForSubmission(u64 tick) const {
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{20};
-        while (tick >= master_semaphore->CurrentTick()) {
-            if (std::chrono::steady_clock::now() >= deadline) {
-                return false;
-            }
-            std::this_thread::sleep_for(std::chrono::microseconds{100});
-        }
-        return true;
+        return master_semaphore->WaitForTick(tick, std::chrono::milliseconds{20});
     }
 
     /// Returns the current command buffer tick.

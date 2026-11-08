@@ -2,8 +2,10 @@
 # One NAME=VALUE per line. Lines starting with # are ignored.
 # A variable already set in the environment wins over this file.
 # Between files, the user copy (%APPDATA%\eden\nx2_switches.txt, or
-# $XDG_CONFIG_HOME/eden/nx2_switches.txt) wins over this one, so editing this file is never
+# $XDG_CONFIG_HOME/eden/nx2_switches.txt) wins over this one, and a portable install's
+# user\nx2_switches.txt (next to the executable) wins over both, so editing this file is never
 # needed: copy the lines you want into your own and restart.
+# Unknown names (typos) and non-numeric values are reported in the log at start.
 #
 # Restart the emulator after editing.
 
@@ -30,7 +32,6 @@ EDEN_NX2_FENCE_BATCH=1
 #EDEN_NX2_NO_REACTIVE=1
 
 #EDEN_NX2_MME_JIT=0
-#EDEN_NX2_PBFLUSH=0
 #EDEN_NX2_SKIP_SAME=0
 #EDEN_NX2_INLINE_DEFER=0
 #EDEN_NX2_SPLIT_SKIP=1

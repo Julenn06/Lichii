@@ -71,8 +71,10 @@ void ConfigureAudio::Setup(const ConfigurationShared::Builder& builder) {
 
         hold.emplace(std::pair{setting->Id(), widget});
 
+        // By name: the list holds only the sinks this build has, so its index is not the enum.
         auto global_sink_match = [this] {
-            return static_cast<Settings::AudioEngine>(sink_combo_box->currentIndex()) ==
+            return Settings::ToEnum<Settings::AudioEngine>(
+                       sink_combo_box->currentText().toStdString()) ==
                    Settings::values.sink_id.GetValue(true);
         };
         if (setting->Id() == Settings::values.sink_id.Id()) {
@@ -89,9 +91,8 @@ void ConfigureAudio::Setup(const ConfigurationShared::Builder& builder) {
                 widget->layout()->addWidget(restore_sink_button);
                 connect(restore_sink_button, &QAbstractButton::clicked, [this](bool) {
                     Settings::values.sink_id.SetGlobal(true);
-                    const int sink_index = static_cast<int>(Settings::values.sink_id.GetValue());
-                    sink_combo_box->setCurrentIndex(sink_index);
-                    ConfigureAudio::UpdateAudioDevices(sink_index);
+                    SetOutputSinkFromSinkID();
+                    ConfigureAudio::UpdateAudioDevices(sink_combo_box->currentIndex());
                     Settings::values.audio_output_device_id.SetGlobal(true);
                     Settings::values.audio_input_device_id.SetGlobal(true);
                     restore_sink_button->setVisible(false);
@@ -240,20 +241,20 @@ void ConfigureAudio::ApplyConfiguration() {
         apply_func(is_powered_on);
     }
 
-    const u32 new_sink_id = [this]() {
+    const Settings::AudioEngine new_sink_id = [this]() {
         const std::string sink_id = sink_combo_box->currentText().toStdString();
         const auto canonicalizations =
             Settings::EnumMetadata<Settings::AudioEngine>::Canonicalizations();
 
-        for (u32 i = 0; i < canonicalizations.size(); ++i) {
-            if (sink_id == canonicalizations[i].first)
-                return i;
+        for (const auto& [name, value] : canonicalizations) {
+            if (sink_id == name)
+                return value;
         }
 
-        return u32(0);
+        return Settings::AudioEngine::Auto;
     }();
 
-    Settings::values.sink_id.SetValue(Settings::AudioEngine(new_sink_id));
+    Settings::values.sink_id.SetValue(new_sink_id);
     Settings::values.audio_output_device_id.SetValue(
         output_device_combo_box->itemText(output_device_combo_box->currentIndex()).toStdString());
     Settings::values.audio_input_device_id.SetValue(

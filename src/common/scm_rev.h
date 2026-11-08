@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <string_view>
+
 namespace Common {
 
 extern const char g_scm_rev[];
@@ -31,5 +33,10 @@ extern const char g_build_auto_update_api_path[];
 extern const char g_build_auto_update_repo[];
 extern const char g_build_auto_update_stable_api[];
 extern const char g_build_auto_update_stable_repo[];
+
+/// Frizti fork releases ("Frizti v3"): the window title and log show the release number.
+inline bool IsFriztiBuild() {
+    return std::string_view{g_build_version}.starts_with("Frizti v");
+}
 
 } // namespace Common

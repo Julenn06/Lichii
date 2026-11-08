@@ -50,11 +50,14 @@ const std::array<int, 2> QtConfig::default_ringcon_analogs{{
 QtConfig::QtConfig(const std::string& config_name, const ConfigType config_type)
     : Config(config_type) {
 
-    Initialize(config_name);
-    if (config_type != ConfigType::InputProfile) {
-        ReadQtValues();
-        SaveQtValues();
+    if (config_type == ConfigType::InputProfile) {
+        Initialize(config_name);
+        return;
     }
+    // Initialize's Reload already writes the file; SaveQtValues writes it once for both.
+    WithoutWrites([&] { Initialize(config_name); });
+    ReadQtValues();
+    SaveQtValues();
 }
 
 QtConfig::~QtConfig() {
@@ -64,13 +67,13 @@ QtConfig::~QtConfig() {
 }
 
 void QtConfig::ReloadAllValues() {
-    Reload();
+    WithoutWrites([this] { Reload(); });
     ReadQtValues();
     SaveQtValues();
 }
 
 void QtConfig::SaveAllValues() {
-    SaveValues();
+    WithoutWrites([this] { SaveValues(); });
     SaveQtValues();
 }
 

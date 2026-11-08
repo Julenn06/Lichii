@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <QCoreApplication>
+
 #include <QObject>
 #include <QString>
 #include "frozen/map.h"
@@ -135,7 +137,8 @@ static const constexpr frozen::map<StringKey, frozen::string, 29> strings = {
 };
 
 static inline const QString Lookup(StringKey key) {
-    return QObject::tr(strings.at(key).data());
+    // QT_TR_NOOP filed these under this namespace, not under QObject.
+    return QCoreApplication::translate("QtCommon::StringLookup", strings.at(key).data());
 }
 
 } // namespace QtCommon::StringLookup

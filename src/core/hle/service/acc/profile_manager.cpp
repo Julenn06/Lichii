@@ -548,6 +548,9 @@ std::vector<std::string> ProfileManager::FindOrphanedProfiles()
                       / "user/save/0000000000000000";
 
     std::vector<std::string> orphaned_profiles;
+    if (!Common::FS::IsDir(path)) {
+        return orphaned_profiles; // no save data yet (a fresh install)
+    }
 
     Common::FS::IterateDirEntries(
         path,
@@ -573,16 +576,23 @@ std::vector<std::string> ProfileManager::FindOrphanedProfiles()
                         if (file.is_regular_file() || Common::FS::IsSymlink(file.path()))
                             return false;
                     }
-                } catch (const fs::filesystem_error& e) {
-                    // if we get an error--no worries, just pretend it's not empty
-                    return true;
+                } catch (const fs::filesystem_error&) {
+                    // An error says nothing about what is in there: treat it as not empty, or
+                    // the save data below would be deleted.
+                    return false;
                 }
 
                 return true;
             }();
 
             if (is_empty) {
-                fs::remove_all(entry);
+                // Never throws: a locked folder must not take the emulator down at boot.
+                std::error_code ec;
+                fs::remove_all(entry, ec);
+                if (ec) {
+                    LOG_WARNING(Service_ACC, "Could not remove empty profile folder {}: {}",
+                                Common::FS::PathToUTF8String(entry.path()), ec.message());
+                }
                 return true;
             }
 

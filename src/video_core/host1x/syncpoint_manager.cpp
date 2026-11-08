@@ -76,6 +76,17 @@ void SyncpointManager::WaitGuest(u32 syncpoint_id, u32 expected_value) {
     Wait(syncpoints_guest[syncpoint_id], wait_guest_cv, expected_value);
 }
 
+bool SyncpointManager::WaitGuestFor(u32 syncpoint_id, u32 expected_value,
+                                    std::chrono::milliseconds timeout) {
+    auto& syncpoint = syncpoints_guest[syncpoint_id];
+    const auto pred = [&]() { return syncpoint.load(std::memory_order_acquire) >= expected_value; };
+    if (pred()) {
+        return true;
+    }
+    std::unique_lock lk(guard);
+    return wait_guest_cv.wait_for(lk, timeout, pred);
+}
+
 void SyncpointManager::WaitHost(u32 syncpoint_id, u32 expected_value) {
     Wait(syncpoints_host[syncpoint_id], wait_host_cv, expected_value);
 }

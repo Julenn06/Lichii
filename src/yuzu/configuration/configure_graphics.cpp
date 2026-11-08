@@ -105,12 +105,16 @@ ConfigureGraphics::ConfigureGraphics(
         const auto& combobox_enumerations = builder.ComboboxTranslations().at(
             Settings::EnumMetadata<Settings::AspectRatio>::Index());
         const auto ratio_index = aspect_ratio_combobox->currentIndex();
+        const auto res_index = resolution_combobox->currentIndex();
+        // -1 while a combobox is being repopulated.
+        if (ratio_index < 0 || res_index < 0) {
+            return;
+        }
         const auto ratio =
             static_cast<Settings::AspectRatio>(combobox_enumerations[ratio_index].first);
 
         const auto& combobox_enumerations_resolution = builder.ComboboxTranslations().at(
             Settings::EnumMetadata<Settings::ResolutionSetup>::Index());
-        const auto res_index = resolution_combobox->currentIndex();
         const auto setup = static_cast<Settings::ResolutionSetup>(
             combobox_enumerations_resolution[res_index].first);
 
@@ -150,8 +154,10 @@ void ConfigureGraphics::PopulateVSyncModeSelection(bool use_setting) {
     const int device{vulkan_device_combobox->currentIndex()}; //< current selected Vulkan device
 
     const auto& present_modes = //< relevant vector of present modes for the selected device or API
-        backend == Settings::RendererBackend::Vulkan && device > -1 ? device_present_modes[device]
-                                                                    : default_present_modes;
+        backend == Settings::RendererBackend::Vulkan && device > -1 &&
+                static_cast<size_t>(device) < device_present_modes.size()
+            ? device_present_modes[device]
+            : default_present_modes;
 
     vsync_mode_combobox->clear();
     vsync_mode_combobox_enum_map.clear();
@@ -190,7 +196,11 @@ void ConfigureGraphics::UpdateVsyncSetting() const {
         return;
     }
 
-    const auto mode = vsync_mode_combobox_enum_map[vsync_mode_combobox->currentIndex()];
+    const int index = vsync_mode_combobox->currentIndex();
+    if (index < 0 || static_cast<size_t>(index) >= vsync_mode_combobox_enum_map.size()) {
+        return; // no present mode listed for this device
+    }
+    const auto mode = vsync_mode_combobox_enum_map[index];
     const auto vsync_mode = PresentModeToSetting(mode);
     Settings::values.vsync_mode.SetValue(vsync_mode);
 }
@@ -472,7 +482,10 @@ void ConfigureGraphics::ApplyConfiguration() {
         switch (backend) {
         case Settings::RendererBackend::Vulkan:
             Settings::values.vulkan_device.SetGlobal(Settings::IsConfiguringGlobal());
-            Settings::values.vulkan_device.SetValue(vulkan_device_combobox->currentIndex());
+            // -1 when no Vulkan device was found: keep the stored index.
+            if (vulkan_device_combobox->currentIndex() >= 0) {
+                Settings::values.vulkan_device.SetValue(vulkan_device_combobox->currentIndex());
+            }
             break;
         case Settings::RendererBackend::OpenGL_GLSL:
         case Settings::RendererBackend::OpenGL_SPIRV:

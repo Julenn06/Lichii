@@ -568,7 +568,6 @@
         <item>1</item>
         <item>2</item>
         <item>3</item>
-        <item>4</item>
     </integer-array>
 
 
@@ -686,11 +685,11 @@
 
     <!-- GPU Logging Arrays -->
     <string-array name="gpuLogLevelEntries">
-        <item>Off</item>
-        <item>Errors Only</item>
-        <item>Standard</item>
-        <item>Verbose</item>
-        <item>All</item>
+        <item>@string/gpu_log_level_off</item>
+        <item>@string/gpu_log_level_errors</item>
+        <item>@string/gpu_log_level_standard</item>
+        <item>@string/gpu_log_level_verbose</item>
+        <item>@string/gpu_log_level_all</item>
     </string-array>
 
     <integer-array name="gpuLogLevelValues">

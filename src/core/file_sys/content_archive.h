@@ -71,6 +71,14 @@ public:
 
     Loader::ResultStatus GetStatus() const;
 
+    /// How many NCAs failed to open because their key area key is missing, and the highest key
+    /// generation they needed (0 when none failed). The frontend uses it to say the keys are
+    /// out of date instead of leaving it to the log.
+    static u32 MissingKeyCount();
+    static u8 HighestMissingKeyGeneration();
+    /// Starts counting again, after new keys were installed.
+    static void ResetMissingKeyCount();
+
     std::vector<VirtualFile> GetFiles() const override;
     std::vector<VirtualDir> GetSubdirectories() const override;
     std::string GetName() const override;

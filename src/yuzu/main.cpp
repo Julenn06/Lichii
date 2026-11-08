@@ -154,7 +154,8 @@ static void LoadNx2Switches(const char* argv0) {
     for (const auto& [name, value] : BuiltinSwitches) {
         entries.emplace(name, value);
     }
-    if (const auto exe_dir = GetSwitchExeDirectory(argv0); !exe_dir.empty()) {
+    const auto exe_dir = GetSwitchExeDirectory(argv0);
+    if (!exe_dir.empty()) {
         ParseSwitchFile(exe_dir / "nx2_switches.txt", entries);
     }
 #ifdef _WIN32
@@ -163,6 +164,10 @@ static void LoadNx2Switches(const char* argv0) {
     const auto config_dir = Common::FS::GetDataDirectory("XDG_CONFIG_HOME") / EDEN_DIR;
 #endif
     ParseSwitchFile(config_dir / "nx2_switches.txt", entries);
+    // Portable installs keep everything in "user" next to the executable; its copy wins.
+    if (!exe_dir.empty()) {
+        ParseSwitchFile(exe_dir / "user" / "nx2_switches.txt", entries);
+    }
     for (const auto& [name, value] : entries) {
         if (std::getenv(name.c_str()) != nullptr) {
             continue;

@@ -15,6 +15,7 @@
 
 #include <fmt/format.h>
 
+#include "common/nx2_env.h"
 #include "common/fs/fs_util.h"
 #include "common/fs/path_util.h"
 #include "common/logging.h"
@@ -57,8 +58,8 @@ State& GetState() {
 }
 
 int LogLevel() {
-    const char* const value = std::getenv("EDEN_NX2_DLSS_LOG");
-    return value ? std::atoi(value) : 0;
+    static const int level = static_cast<int>(Common::Nx2Env::Signed("EDEN_NX2_DLSS_LOG", 0));
+    return level;
 }
 
 void LogFromStreamline(sl::LogType type, const char* message) {
@@ -68,6 +69,12 @@ void LogFromStreamline(sl::LogType type, const char* message) {
     }
     switch (type) {
     case sl::LogType::eError:
+        // Streamline always tries its Reflex plugin; DLSS does not need it, so its absence
+        // (NvLowLatencyVk.dll is not shipped) is no error.
+        if (text.find("NvLowLatencyVk") != std::string_view::npos) {
+            LOG_INFO(Render_Vulkan, "Streamline: Reflex plugin not installed (DLSS does not need it)");
+            break;
+        }
         LOG_ERROR(Render_Vulkan, "Streamline: {}", text);
         break;
     case sl::LogType::eWarn:

@@ -44,6 +44,9 @@
 #include "util/util.h"
 #include "yuzu/game/game_list.h"
 #include "yuzu/nup_dialogs.h"
+#include "yuzu/nx2_switches_dialog.h"
+#include "yuzu/bug_report.h"
+#include "yuzu/oot_frame_rate.h"
 
 #include "applets/qt_amiibo_settings.h"
 #include "applets/qt_controller.h"
@@ -155,6 +158,7 @@ static FileSys::VirtualFile VfsDirectoryCreateFileWrapper(const FileSys::Virtual
 #include "core/file_sys/card_image.h"
 #include "core/file_sys/common_funcs.h"
 #include "core/file_sys/nup_writer.h"
+#include "core/file_sys/content_archive.h"
 #include "core/file_sys/romfs.h"
 #include "core/file_sys/savedata_factory.h"
 
@@ -544,7 +548,6 @@ MainWindow::MainWindow(bool has_broken_vulkan)
         }
 
         if (!lp.filepath.empty()) {
-            launched_with_game = true;
             BootGame(QString::fromStdString(lp.filepath), ApplicationAppletParameters());
         } else if (lp.launch_setup) {
             LaunchFirmwareApplet(u64(Service::AM::AppletProgramId::Starter), std::nullopt);
@@ -559,31 +562,6 @@ MainWindow::MainWindow(bool has_broken_vulkan)
                 LibraryAppletParameters(0x010000000000100Dull, Service::AM::AppletId::QLaunch));
         }
     }
-
-    // The first launch asks for Ocarina of Time's frame rate (not when started with a game,
-    // e.g. from a shortcut or script: that keeps the 60 FPS default until the next plain launch).
-    if (!launched_with_game && !Settings::values.oot_fps_asked.GetValue()) {
-        QTimer::singleShot(0, this, &MainWindow::AskOotFrameRate);
-    }
-}
-
-void MainWindow::AskOotFrameRate() {
-    QMessageBox box(this);
-    box.setWindowTitle(tr("Ocarina of Time frame rate"));
-    box.setIcon(QMessageBox::Question);
-    box.setText(tr("Which frame rate should Ocarina of Time run at?"));
-    box.setInformativeText(
-        tr("60 FPS needs a fast, recent CPU.\n"
-           "30 FPS is for lower-end PCs. The game keeps its normal speed either way.\n\n"
-           "Switch any time with the 60 FPS / 30 FPS button at the bottom of the window."));
-    QPushButton* const fps60 = box.addButton(tr("60 FPS"), QMessageBox::AcceptRole);
-    QPushButton* const fps30 = box.addButton(tr("30 FPS (lower-end PCs)"), QMessageBox::AcceptRole);
-    box.setDefaultButton(fps60);
-    box.exec();
-    Settings::values.oot_30fps.SetValue(box.clickedButton() == fps30);
-    Settings::values.oot_fps_asked.SetValue(true);
-    UpdateOotFpsButton();
-    config->SaveAllValues();
 }
 
 MainWindow::~MainWindow() {
@@ -1012,8 +990,15 @@ void MainWindow::InitializeWidgets() {
         tr("Time taken to emulate a Switch frame, not counting framelimiting or v-sync. For "
            "full-speed emulation this should be at most 16.67 ms."));
 
-    for (auto& label : {shader_building_label, res_scale_label, emu_speed_label, game_fps_label,
-                        emu_frametime_label}) {
+    // Switch 2 titles run with settings forced over the configured ones: say so.
+    switch2_mode_label = new QLabel(tr("SWITCH 2"));
+    switch2_mode_label->setObjectName(QStringLiteral("Switch2ModeLabel"));
+    switch2_mode_label->setToolTip(
+        tr("A Switch 2 game is running. It always uses the 12 GB memory layout (your memory "
+           "setting returns for other games) and the Switch 2 system clock."));
+
+    for (auto& label : {switch2_mode_label, shader_building_label, res_scale_label,
+                        emu_speed_label, game_fps_label, emu_frametime_label}) {
         label->setVisible(false);
         label->setFrameStyle(QFrame::NoFrame);
         label->setContentsMargins(4, 0, 4, 0);
@@ -1143,7 +1128,7 @@ void MainWindow::InitializeWidgets() {
             [this](const QPoint& menu_location) {
                 QMenu context_menu;
                 for (auto const& aa_text_pair : ConfigurationShared::anti_aliasing_texts_map) {
-                    context_menu.addAction(aa_text_pair.second, [this, aa_text_pair] {
+                    context_menu.addAction(TrStatusText(aa_text_pair.second), [this, aa_text_pair] {
                         Settings::values.anti_aliasing.SetValue(aa_text_pair.first);
                         UpdateAAText();
                     });
@@ -1166,7 +1151,7 @@ void MainWindow::InitializeWidgets() {
             [this](const QPoint& menu_location) {
                 QMenu context_menu;
                 for (auto const& filter_text_pair : ConfigurationShared::scaling_filter_texts_map) {
-                    context_menu.addAction(filter_text_pair.second, [this, filter_text_pair] {
+                    context_menu.addAction(TrStatusText(filter_text_pair.second), [this, filter_text_pair] {
                         Settings::values.scaling_filter.SetValue(filter_text_pair.first);
                         UpdateFilterText();
                     });
@@ -1189,7 +1174,7 @@ void MainWindow::InitializeWidgets() {
                 QMenu context_menu;
 
                 for (auto const& pair : ConfigurationShared::use_docked_mode_texts_map) {
-                    context_menu.addAction(pair.second, [this, &pair] {
+                    context_menu.addAction(TrStatusText(pair.second), [this, &pair] {
                         if (pair.first != Settings::values.use_docked_mode.GetValue()) {
                             OnToggleDockedMode();
                         }
@@ -1213,7 +1198,7 @@ void MainWindow::InitializeWidgets() {
                 QMenu context_menu;
 
                 for (auto const& gpu_accuracy_pair : ConfigurationShared::gpu_accuracy_texts_map) {
-                    context_menu.addAction(gpu_accuracy_pair.second, [this, gpu_accuracy_pair] {
+                    context_menu.addAction(TrStatusText(gpu_accuracy_pair.second), [this, gpu_accuracy_pair] {
                         Settings::values.gpu_accuracy.SetValue(gpu_accuracy_pair.first);
                         UpdateGPUAccuracyButton();
                     });
@@ -1224,15 +1209,18 @@ void MainWindow::InitializeWidgets() {
     statusBar()->insertPermanentWidget(0, gpu_accuracy_button);
 
     // Ocarina of Time frame rate: one click switches 60 / 30 FPS, at once (also in game).
-    oot_fps_button = new QPushButton();
-    oot_fps_button->setObjectName(QStringLiteral("OotFpsStatusBarButton"));
-    oot_fps_button->setCheckable(true);
-    oot_fps_button->setFocusPolicy(Qt::NoFocus);
-    oot_fps_button->setToolTip(tr("Ocarina of Time frame rate. Click to switch between 60 FPS and "
-                                  "30 FPS (lower-end PCs); it takes effect at once."));
-    connect(oot_fps_button, &QPushButton::clicked, this, &MainWindow::OnToggleOotFrameRate);
-    UpdateOotFpsButton();
-    statusBar()->insertPermanentWidget(0, oot_fps_button);
+    oot_frame_rate =
+        new OotFrameRateControl(this, statusBar(), [this] { config->SaveAllValues(); });
+
+    // Out-of-date keys: firmware and games newer than prod.keys fail to open, which only the log
+    // used to say (~100 errors at every start).
+    keys_warning_button = new QPushButton();
+    keys_warning_button->setObjectName(QStringLiteral("KeysWarningStatusBarButton"));
+    keys_warning_button->setFocusPolicy(Qt::NoFocus);
+    keys_warning_button->setVisible(false);
+    connect(keys_warning_button, &QPushButton::clicked, this,
+            &MainWindow::OnInstallDecryptionKeys);
+    statusBar()->insertPermanentWidget(0, keys_warning_button);
 
     // Setup Renderer API button
     renderer_status_button = new QPushButton();
@@ -1255,7 +1243,7 @@ void MainWindow::InitializeWidgets() {
                         continue;
                     }
                     context_menu.addAction(
-                        renderer_backend_pair.second, [this, renderer_backend_pair] {
+                        TrStatusText(renderer_backend_pair.second), [this, renderer_backend_pair] {
                             Settings::values.renderer_backend.SetValue(renderer_backend_pair.first);
                             UpdateAPIText();
                         });
@@ -1516,8 +1504,10 @@ void MainWindow::ConnectWidgetEvents() {
     connect(game_list_placeholder, &GameListPlaceholder::AddDirectory, this,
             &MainWindow::OnGameListAddDirectory);
     connect(game_list, &GameList::ShowList, this, &MainWindow::OnGameListShowList);
-    connect(game_list, &GameList::PopulatingCompleted,
-            [this] { multiplayer_state->UpdateGameList(game_list->GetModel()); });
+    connect(game_list, &GameList::PopulatingCompleted, [this] {
+        multiplayer_state->UpdateGameList(game_list->GetModel());
+        UpdateKeysWarning(); // scanning the library is what opens the NCAs
+    });
     connect(game_list, &GameList::SaveConfig, this, &MainWindow::OnSaveConfig);
 
     connect(game_list, &GameList::OpenPerGameGeneralRequested, this,
@@ -1544,6 +1534,16 @@ void MainWindow::ConnectMenuEvents() {
         // Add actions to the render window so that they work outside of single window mode
         render_window->addAction(action);
     };
+
+    // Lichii: the EDEN_NX2_* switches without editing nx2_switches.txt, and a bug report zip.
+    ui->menu_Tools->addSeparator();
+    QAction* const switches_action = ui->menu_Tools->addAction(tr("Switch 2 &Advanced Options..."));
+    connect(switches_action, &QAction::triggered, this, [this] {
+        Nx2SwitchesDialog dialog{this};
+        dialog.exec();
+    });
+    QAction* const report_action = ui->menu_Help->addAction(tr("Create &Bug Report..."));
+    connect(report_action, &QAction::triggered, this, [this] { BugReport::Create(this); });
 
     // File
     connect_menu(ui->action_Load_File, &MainWindow::OnMenuLoadFile);
@@ -2006,6 +2006,8 @@ void MainWindow::BootGame(const QString& filename, Service::AM::FrontendAppletPa
         QtCommon::system->ApplySettings();
     }
 
+    oot_frame_rate->OnGameBoot(title_id);
+
     if (title_id == Settings::MarioKartWorldProgramId && !asked_recommended_mkw_settings) {
         asked_recommended_mkw_settings = true;
         use_recommended_mkw_settings =
@@ -2352,6 +2354,8 @@ void MainWindow::OnEmulationStopped() {
     res_scale_label->setVisible(false);
     emu_speed_label->setVisible(false);
     game_fps_label->setVisible(false);
+    oot_frame_rate->OnGameStopped();
+    switch2_mode_label->setVisible(false);
     emu_frametime_label->setVisible(false);
     renderer_status_button->setEnabled(!UISettings::values.has_broken_vulkan);
     refresh_button->setEnabled(true);
@@ -4060,6 +4064,9 @@ void MainWindow::OnInstallDecryptionKeys() {
 
     QtCommon::Content::InstallKeys();
 
+    // The rescan below counts again with the new keys.
+    FileSys::NCA::ResetMissingKeyCount();
+    keys_warning_button->setVisible(false);
     game_list->PopulateAsync(UISettings::values.game_dirs);
     OnCheckFirmwareDecryption();
 }
@@ -4741,59 +4748,71 @@ void MainWindow::UpdateStatusBar() {
     emu_frametime_label->setText(tr("Frame: %1 ms").arg(results.frametime * 1000.0, 0, 'f', 2));
 
     res_scale_label->setVisible(true);
+    switch2_mode_label->setVisible(Settings::CurrentProgramIsSwitch2());
     emu_speed_label->setVisible(!Settings::values.use_multi_core.GetValue());
     game_fps_label->setVisible(true);
     emu_frametime_label->setVisible(true);
     firmware_label->setVisible(false);
 }
 
+// The ConfigurationShared status maps hold untranslated QT_TRANSLATE_NOOP("MainWindow", ...) text.
+QString MainWindow::TrStatusText(const QString& text) {
+    return tr(text.toUtf8().constData());
+}
+
 void MainWindow::UpdateGPUAccuracyButton() {
     const auto gpu_accuracy = Settings::values.gpu_accuracy.GetValue();
     const auto gpu_accuracy_text =
         ConfigurationShared::gpu_accuracy_texts_map.find(gpu_accuracy)->second;
-    gpu_accuracy_button->setText(gpu_accuracy_text.toUpper());
+    gpu_accuracy_button->setText(TrStatusText(gpu_accuracy_text).toUpper());
     gpu_accuracy_button->setChecked(gpu_accuracy != Settings::GpuAccuracy::Low);
 }
 
-void MainWindow::UpdateOotFpsButton() {
-    const bool fps30 = Settings::values.oot_30fps.GetValue();
-    oot_fps_button->setChecked(fps30);
-    oot_fps_button->setText(fps30 ? tr("30 FPS") : tr("60 FPS"));
+void MainWindow::UpdateKeysWarning() {
+    const u32 missing = FileSys::NCA::MissingKeyCount();
+    if (missing == 0) {
+        keys_warning_button->setVisible(false);
+        return;
+    }
+    const u8 generation = FileSys::NCA::HighestMissingKeyGeneration();
+    keys_warning_button->setText(tr("Keys out of date"));
+    keys_warning_button->setToolTip(
+        tr("%n file(s) could not be decrypted: they need keys of generation %1 or newer. "
+           "Click to install newer prod.keys.",
+           "", static_cast<int>(missing))
+            .arg(QStringLiteral("0x%1").arg(
+                QString::number(generation, 16).rightJustified(2, QLatin1Char('0')).toUpper())));
+    keys_warning_button->setVisible(true);
 }
 
-void MainWindow::OnToggleOotFrameRate() {
-    Settings::values.oot_30fps.SetValue(!Settings::values.oot_30fps.GetValue());
-    Settings::values.oot_fps_asked.SetValue(true);
-    UpdateOotFpsButton();
-    config->SaveAllValues();
-}
 
 void MainWindow::UpdateDockedButton() {
     const auto console_mode = Settings::values.use_docked_mode.GetValue();
     dock_status_button->setChecked(Settings::IsDockedMode());
     dock_status_button->setText(
-        ConfigurationShared::use_docked_mode_texts_map.find(console_mode)->second.toUpper());
+        TrStatusText(ConfigurationShared::use_docked_mode_texts_map.find(console_mode)->second)
+            .toUpper());
 }
 
 void MainWindow::UpdateAPIText() {
     const auto api = Settings::values.renderer_backend.GetValue();
     const auto renderer_status_text =
         ConfigurationShared::renderer_backend_texts_map.find(api)->second;
-    renderer_status_button->setText(renderer_status_text.toUpper());
+    renderer_status_button->setText(TrStatusText(renderer_status_text).toUpper());
 }
 
 void MainWindow::UpdateFilterText() {
     const auto filter = Settings::values.scaling_filter.GetValue();
     const auto filter_text = ConfigurationShared::scaling_filter_texts_map.find(filter)->second;
-    filter_status_button->setText(filter_text.toUpper());
+    filter_status_button->setText(TrStatusText(filter_text).toUpper());
 }
 
 void MainWindow::UpdateAAText() {
     const auto aa_mode = Settings::values.anti_aliasing.GetValue();
     const auto aa_text = ConfigurationShared::anti_aliasing_texts_map.find(aa_mode)->second;
     aa_status_button->setText(aa_mode == Settings::AntiAliasing::None
-                                  ? QStringLiteral(QT_TRANSLATE_NOOP("MainWindow", "NO AA"))
-                                  : aa_text.toUpper());
+                                  ? tr("NO AA")
+                                  : TrStatusText(aa_text).toUpper());
 }
 
 #ifdef HAS_RESHADE
@@ -4834,7 +4853,7 @@ void MainWindow::UpdateStatusButtons() {
     UpdateAPIText();
     UpdateGPUAccuracyButton();
     UpdateDockedButton();
-    UpdateOotFpsButton();
+    oot_frame_rate->Refresh();
     UpdateFilterText();
     UpdateAAText();
     UpdateVolumeUI();
@@ -5281,10 +5300,15 @@ void MainWindow::LoadTranslation() {
                                  QStringLiteral(":/languages/"));
     }
 
-    if (loaded)
+    // Without a translation the UI stays in English for this session only. Saving "en" here
+    // turned off the system language for good: a build without translations (all Lichii builds
+    // before translations were enabled) pinned every Spanish or German system to English.
+    if (loaded) {
         qApp->installTranslator(&translator);
-    else
-        UISettings::values.language = std::string("en");
+    } else {
+        LOG_INFO(Frontend, "No translation for UI language \"{}\"; using English",
+                 UISettings::values.language.GetValue());
+    }
 }
 
 void MainWindow::OnLanguageChanged(const QString& locale) {

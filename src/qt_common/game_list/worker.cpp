@@ -286,10 +286,14 @@ QList<QStandardItem*> MakeGameListEntry(const std::string& path, const std::stri
     }
 
     u64 play_time = play_time_manager.GetPlayTime(program_id);
+    // The type column marks Switch 2 titles; the path item keeps the plain type for its text rows.
+    const QString type_column = GameListItemPath::IsSwitch2ProgramId(program_id)
+                                    ? QStringLiteral("%1 · Switch 2").arg(file_type_string)
+                                    : file_type_string;
     return QList<QStandardItem*>{
         new GameListItemPath(FormatGameName(path), icon, QString::fromStdString(name),
                              file_type_string, program_id, play_time, patch_versions),
-        new GameListItem(file_type_string),
+        new GameListItem(type_column),
         new GameListItemSize(size),
         new GameListItemPlayTime(play_time),
         new GameListItem(patch_versions),

@@ -1054,6 +1054,13 @@ add_library(core STATIC
     hle/service/nx2_streamplay.h
     hle/service/nx2_stub_interface.h
     hle/service/nx2_gsv.h
+    hle/service/nx2_gsv/common.h
+    hle/service/nx2_gsv/syncpt.h
+    hle/service/nx2_gsv/gpu.h
+    hle/service/nx2_gsv/native_objects.h
+    hle/service/nx2_gsv/vi2.h
+    hle/service/nx2_gsv/video.h
+    hle/service/nx2_gsv/graphics_system.h
     hle/service/nx2_video_input_queue.h
     hle/service/nx2_image_layout.h
     hle/service/nx2_present_pacer.h

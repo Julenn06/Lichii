@@ -9,8 +9,11 @@
 #include "common/fs/path_util.h"
 #include "qt_common/abstract/frontend.h"
 #include "qt_common/util/path.h"
+#include "qt_common/util/translate.h"
 
 namespace QtCommon::Path {
+
+QTCOMMON_TRANSLATION_CONTEXT("QtCommon::Path")
 
 bool OpenShaderCache(u64 program_id, QObject* parent) {
     const auto shader_cache_dir = Common::FS::GetEdenPath(Common::FS::EdenPath::ShaderDir);

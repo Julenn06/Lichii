@@ -6,7 +6,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
+#include <filesystem>
+#include <system_error>
 #include "common/fs/fs.h"
+#include "common/fs/fs_util.h"
 #include "common/fs/path_util.h"
 #include "common/logging.h"
 #include "common/settings.h"
@@ -74,14 +78,23 @@ void Config::WriteToIni() const {
         config_type = "Input Profile";
         break;
     }
+    if (writes_held) {
+        return;
+    }
     LOG_INFO(Config, "Writing {} configuration to: {}", config_type, config_loc);
+
+    // Write a sibling file and move it over the old one: truncating the config in place lost
+    // every setting when the process died (or the power went) mid-write.
+    const std::filesystem::path target = Common::FS::ToU8String(config_loc);
+    std::filesystem::path temporary = target;
+    temporary += u8".tmp";
+
     FILE* fp = nullptr;
 #ifdef _WIN32
-    fp = _wfopen(Common::UTF8ToUTF16W(config_loc).data(), L"wb");
+    fp = _wfopen(temporary.c_str(), L"wb");
 #else
-    fp = fopen(config_loc.c_str(), "wb");
+    fp = fopen(temporary.c_str(), "wb");
 #endif
-
     if (fp == nullptr) {
         LOG_ERROR(Frontend, "Config file could not be saved!");
         return;
@@ -89,10 +102,20 @@ void Config::WriteToIni() const {
 
     CSimpleIniA::FileWriter writer(fp);
     const SI_Error rc = config->Save(writer, false);
-    if (rc < 0) {
-        LOG_ERROR(Frontend, "Config file could not be saved!");
+    const bool flushed = std::fflush(fp) == 0;
+    const bool closed = std::fclose(fp) == 0;
+    std::error_code ec;
+    if (rc < 0 || !flushed || !closed) {
+        LOG_ERROR(Frontend, "Config file could not be saved! The previous one was kept.");
+        std::filesystem::remove(temporary, ec);
+        return;
     }
-    fclose(fp);
+    std::filesystem::rename(temporary, target, ec);
+    if (ec) {
+        LOG_ERROR(Frontend, "Config file could not be replaced ({}); the previous one was kept.",
+                  ec.message());
+        std::filesystem::remove(temporary, ec);
+    }
 }
 
 void Config::SetUpIni() {
@@ -274,8 +297,11 @@ void Config::ReadDataStorageValues() {
 
     using namespace Common::FS;
 
+    // Empty means the default directory: setting it logged an error per path at every start.
     const auto setPath = [this](const EdenPath& path, const char* setting) {
-        SetEdenPath(path, ReadStringSetting(std::string(setting)));
+        if (const auto value = ReadStringSetting(std::string(setting)); !value.empty()) {
+            SetEdenPath(path, value);
+        }
     };
 
     setPath(EdenPath::NANDDir, "nand_directory");
@@ -378,8 +404,10 @@ void Config::ReadScreenshotValues() {
     BeginGroup(Settings::TranslateCategory(Settings::Category::Screenshots));
 
     ReadCategory(Settings::Category::Screenshots);
-    FS::SetEdenPath(FS::EdenPath::ScreenshotsDir,
-                    ReadStringSetting(std::string("screenshot_path")));
+    if (const auto screenshot_path = ReadStringSetting(std::string("screenshot_path"));
+        !screenshot_path.empty()) {
+        FS::SetEdenPath(FS::EdenPath::ScreenshotsDir, screenshot_path);
+    }
 
     EndGroup();
 }

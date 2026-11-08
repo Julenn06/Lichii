@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "game_settings.h"
+#include "common/log_repeat.h"
 #include "common/cpu_features.h"
 #include "audio_core/audio_core.h"
 #include "common/fs/fs.h"
@@ -379,7 +380,11 @@ struct System::Impl {
         // as a per-game value, so RestoreGlobalState brings back the configured layout afterwards.
         if (switch2_program &&
             Settings::values.memory_layout_mode.GetValue() != Settings::MemoryLayout::Memory_12Gb) {
-            LOG_INFO(Core, "Switch 2 program: using the 12 GiB memory layout");
+            LOG_WARNING(Core,
+                        "Switch 2 program: using the 12 GiB memory layout instead of the "
+                        "configured one ({}); the setting returns after this game",
+                        Settings::CanonicalizeEnum(
+                            Settings::values.memory_layout_mode.GetValue()));
             Settings::values.memory_layout_mode.SetGlobal(false);
             Settings::values.memory_layout_mode.SetValue(Settings::MemoryLayout::Memory_12Gb);
         }
@@ -862,9 +867,13 @@ u64 System::ResolveCallerProgramId(u64 process_id) const {
     }
 
     const auto fallback = this->GetApplicationProcessProgramID();
-    LOG_WARNING(Core,
-                "Could not resolve caller process_id={}, falling back to application {:016X}",
-                process_id, fallback);
+    static std::atomic<u64> repeats{};
+    if (const u64 count = Common::Log::CountRepeat(repeats)) {
+        LOG_WARNING(Core,
+                    "Could not resolve caller process_id={}, falling back to application {:016X} "
+                    "({} times so far)",
+                    process_id, fallback, count);
+    }
     return fallback;
 }
 

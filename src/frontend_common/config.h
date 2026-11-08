@@ -222,7 +222,19 @@ protected:
     std::string config_loc;
     const bool global;
 
+    /// Runs `steps` with WriteToIni held back, so several Save* passes that each end in a write
+    /// (Reload, then the frontend's own values) put the file on disk once.
+    template <typename Steps>
+    void WithoutWrites(Steps&& steps) {
+        const bool previous = writes_held;
+        writes_held = true;
+        steps();
+        writes_held = previous;
+    }
+
 private:
+    bool writes_held = false;
+
     void WritePreparedSetting(const std::string& key, const std::string& adjusted_value,
                               const std::optional<std::string>& adjusted_default_value,
                               const std::optional<bool>& use_global);

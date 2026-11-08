@@ -28,6 +28,7 @@
 #include "common/dkb_frame_trace.h"
 #include "shader_recompiler/exception.h"
 #include "common/logging.h"
+#include "common/log_repeat.h"
 #include "common/scope_exit.h"
 #include "common/settings.h"
 #include "video_core/buffer_cache/buffer_cache.h"
@@ -440,14 +441,14 @@ void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func, bool is_in
 
     const auto report_failure = [&](std::string_view reason) {
         TraceDrawFailure(reason);
-        static std::set<std::tuple<u64, u64, std::string_view>> seen;
+        static Common::Log::LoggedKeys<std::tuple<u64, u64, std::string_view>> seen{64};
         const auto& regs = maxwell3d->regs;
         const u64 vs = (u64{regs.pipelines[1].reserved[0] & 0xff} << 32) | regs.pipelines[1].reserved[1];
         const u64 ps = (u64{regs.pipelines[5].reserved[0] & 0xff} << 32) | regs.pipelines[5].reserved[1];
         if (frame_dump.Capturing()) {
             frame_dump.NoteSkipped(false, ps != 0 ? ps : vs, regs.rt[0].Address(), reason);
         }
-        if (seen.size() < 64 && seen.emplace(vs, ps, reason).second) {
+        if (seen.First({vs, ps, reason})) {
             LOG_WARNING(HW_GPU, "Draw skipped ({}): vs={:#x} ps={:#x} rt0={:#x} {}x{}", reason, vs, ps,
                         regs.rt[0].Address(), regs.rt[0].width, regs.rt[0].height);
         }
@@ -511,7 +512,12 @@ void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func, bool is_in
         frame_dump.NoteDraw(pipeline->ShaderHashes());
         if (frame_dump.CapturingSampled()) {
             boost::container::small_vector<FrameDump::Sampled, 16> sampled;
-            for (const auto& image : pipeline->SampledImages()) {
+            // Indexed, not a range-for: MSVC (14.52) lost GraphicsPipeline's members for the rest
+            // of this template after a range-for over the span of its nested SampledImage.
+            const std::span<const GraphicsPipeline::SampledImage> images =
+                pipeline->SampledImages();
+            for (size_t index = 0; index < images.size(); ++index) {
+                const GraphicsPipeline::SampledImage& image = images[index];
                 sampled.push_back({image.stage, image.tic, &texture_cache.GetImageView(image.id),
                                    &texture_cache.GetSampler(image.sampler)});
             }
@@ -908,16 +914,16 @@ void RasterizerVulkan::Draw(bool is_indexed, u32 instance_count) {
     }
     // EDEN_NX2_RT_TRACE: log the first draw to every distinct colour target (debug aid).
     if (static const bool trace = std::getenv("EDEN_NX2_RT_TRACE") != nullptr; trace) {
-        static std::set<std::tuple<GPUVAddr, u32, u32, u64, u64>> seen;
+        static Common::Log::LoggedKeys<std::tuple<GPUVAddr, u32, u32, u64, u64>> seen{600};
         const auto& regs = maxwell3d->regs;
         const auto& rt = regs.rt[0];
         const u64 vs = (u64{regs.pipelines[1].reserved[0] & 0xff} << 32) | regs.pipelines[1].reserved[1];
         const u64 ps = (u64{regs.pipelines[5].reserved[0] & 0xff} << 32) | regs.pipelines[5].reserved[1];
         const auto key = std::make_tuple(rt.Address(), rt.width, static_cast<u32>(rt.format), vs, ps);
-        if (rt.width >= 640 && seen.size() < 600 && seen.insert(key).second) {
+        if (rt.width >= 640 && seen.First(key)) {
             LOG_INFO(HW_GPU, "nx2 draw target {:#x} {}x{} format={:#x} vs={:#x} ps={:#x} blend={} (pairs so far {})",
                      rt.Address(), rt.width, rt.height, static_cast<u32>(rt.format), vs, ps,
-                     regs.blend.enable[0], seen.size());
+                     regs.blend.enable[0], seen.Size());
         }
     }
     PrepareDraw(is_indexed, [this, is_indexed, instance_count, gpu_count] {

@@ -290,7 +290,12 @@ class Emulator:
                 self.sock.settimeout(timeout)
                 request_id = self.next_id
                 self.next_id += 1
-                line = json.dumps({"id": request_id, "method": method, "params": params})
+                request = {"id": request_id, "method": method, "params": params}
+                # The server checks it when started with EDEN_NX2_DEBUG_TOKEN.
+                token = os.environ.get("EDEN_NX2_DEBUG_TOKEN")
+                if token:
+                    request["token"] = token
+                line = json.dumps(request)
                 self.sock.sendall(line.encode() + b"\n")
                 while b"\n" not in self.buffer:
                     chunk = self.sock.recv(1 << 20)

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2017 Citra Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <QCoreApplication>
 #include <QMessageBox>
 #include <QString>
 
@@ -53,14 +54,18 @@ const ConnectionError ErrorManager::NO_INTERFACE_SELECTED(QT_TR_NOOP(
     "No valid network interface is selected.\nPlease go to Configure -> System -> Network and "
     "make a selection."));
 
+// lupdate files the QT_TR_NOOPs below under "NetworkMessage" and the errors above under
+// "ErrorManager"; tr() would look them up as "QObject" and "NetworkMessage::ErrorManager".
 static bool WarnMessage(const std::string& title, const std::string& text) {
-    return QMessageBox::Ok == QMessageBox::warning(nullptr, QObject::tr(title.c_str()),
-                                                   QObject::tr(text.c_str()),
+    return QMessageBox::Ok ==
+           QMessageBox::warning(nullptr, QCoreApplication::translate("NetworkMessage", title.c_str()),
+                                QCoreApplication::translate("NetworkMessage", text.c_str()),
                                                    QMessageBox::Ok | QMessageBox::Cancel);
 }
 
 void ErrorManager::ShowError(const ConnectionError& e) {
-    QMessageBox::critical(nullptr, tr("Error"), tr(e.GetString().c_str()));
+    QMessageBox::critical(nullptr, QCoreApplication::translate("ErrorManager", "Error"),
+                          QCoreApplication::translate("ErrorManager", e.GetString().c_str()));
 }
 
 bool WarnGameRunning() {

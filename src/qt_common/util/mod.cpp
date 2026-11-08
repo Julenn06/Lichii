@@ -7,8 +7,11 @@
 #include "frontend_common/mod_manager.h"
 #include "mod.h"
 #include "qt_common/abstract/frontend.h"
+#include "qt_common/util/translate.h"
 
 namespace QtCommon::Mod {
+
+QTCOMMON_TRANSLATION_CONTEXT("QtCommon::Mod")
 QStringList GetModFolders(const QString& root, const QString& fallbackName) {
     namespace fs = std::filesystem;
 
