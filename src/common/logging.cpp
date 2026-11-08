@@ -252,7 +252,13 @@ struct FileBackend final : public Backend {
         // We don't particularly care if these succeed or not.
         void(FS::RemoveFile(old_filename));
         void(FS::RenameFile(filename, old_filename));
-        file.emplace(filename, FS::FileAccessMode::Write, FS::FileType::TextFile);
+        // Still there: another Lichii has it open. Truncating it would wipe that session's log,
+        // so this instance writes next to it instead.
+        auto target = filename;
+        if (FS::Exists(filename)) {
+            target += ".second-instance.txt";
+        }
+        file.emplace(target, FS::FileAccessMode::Write, FS::FileType::TextFile);
     }
     ~FileBackend() noexcept override = default;
 

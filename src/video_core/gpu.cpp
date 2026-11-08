@@ -4,12 +4,15 @@
 // SPDX-FileCopyrightText: Copyright 2018 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <list>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <utility>
 
 #include "common/assert.h"
@@ -43,6 +46,64 @@
 #include "video_core/shader_notify.h"
 
 namespace Tegra {
+
+namespace {
+// Lichii: how long the game's CPU threads stall waiting for the GPU (reads of GPU-written
+// memory and cache invalidations), summed in the log every 5 s so slow spots can be traced.
+class GpuStallStats {
+public:
+    void Add(bool is_read, u64 area, std::chrono::steady_clock::duration waited) {
+        const auto now = std::chrono::steady_clock::now();
+        const u64 ns = static_cast<u64>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(waited).count());
+        std::scoped_lock lk{mutex};
+        if (window_start.time_since_epoch().count() == 0) {
+            window_start = now;
+        }
+        (is_read ? reads : invalidations)++;
+        total_ns += ns;
+        max_ns = std::max(max_ns, ns);
+        auto& entry = areas[area];
+        entry.first++;
+        entry.second += ns;
+        const auto elapsed = now - window_start;
+        if (elapsed < std::chrono::seconds{5}) {
+            return;
+        }
+        const auto worst = std::max_element(areas.begin(), areas.end(), [](const auto& a,
+                                                                           const auto& b) {
+            return a.second.second < b.second.second;
+        });
+        const double window_ms =
+            std::chrono::duration<double, std::milli>(elapsed).count();
+        LOG_INFO(HW_GPU,
+                 "GPU stalls in {:.1f} s: {} reads + {} invalidations, {:.1f} ms waited "
+                 "({:.1f}% of the time), longest {:.2f} ms; worst area {:#x}: {} waits, "
+                 "{:.1f} ms",
+                 window_ms / 1000.0, reads, invalidations, total_ns / 1e6,
+                 100.0 * (total_ns / 1e6) / window_ms, max_ns / 1e6, worst->first,
+                 worst->second.first, worst->second.second / 1e6);
+        reads = invalidations = 0;
+        total_ns = max_ns = 0;
+        areas.clear();
+        window_start = now;
+    }
+
+private:
+    std::mutex mutex;
+    std::chrono::steady_clock::time_point window_start{};
+    u64 reads = 0;
+    u64 invalidations = 0;
+    u64 total_ns = 0;
+    u64 max_ns = 0;
+    std::map<u64, std::pair<u64, u64>> areas;
+};
+
+GpuStallStats& StallStats() {
+    static GpuStallStats stats;
+    return stats;
+}
+} // namespace
 
 struct GPU::Impl {
     explicit Impl(Core::System& system_, bool is_async_, bool use_nvdec_)
@@ -255,8 +316,11 @@ struct GPU::Impl {
             InvalidateGPUCache();
             renderer->ReadRasterizer()->FlushRegion(raster_area.start_address, raster_area.end_address - raster_area.start_address);
         });
+        const auto wait_start = std::chrono::steady_clock::now();
         gpu_thread.TickGPU(is_async);
         WaitForSyncOperation(fence);
+        StallStats().Add(true, raster_area.start_address,
+                         std::chrono::steady_clock::now() - wait_start);
         return raster_area;
     }
 
@@ -269,8 +333,10 @@ struct GPU::Impl {
                     rasterizer->FlushRegion(addr, size, VideoCommon::CacheType::BufferCache);
                     rasterizer->OnCacheInvalidation(addr, size);
                 });
+                const auto wait_start = std::chrono::steady_clock::now();
                 gpu_thread.TickGPU(is_async);
                 WaitForSyncOperation(fence);
+                StallStats().Add(false, addr, std::chrono::steady_clock::now() - wait_start);
             }
             return;
         }
