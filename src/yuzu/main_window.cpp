@@ -45,6 +45,8 @@
 #include "yuzu/game/game_list.h"
 #include "yuzu/nup_dialogs.h"
 #include "yuzu/nx2_switches_dialog.h"
+#include "qt_common/game_list/game_list_p.h"
+#include "yuzu/game/game_grid.h"
 #include "yuzu/bug_report.h"
 #include "yuzu/oot_frame_rate.h"
 
@@ -91,7 +93,9 @@
 #include <QScreen>
 #include <QShortcut>
 #include <QStatusBar>
+#include <QBuffer>
 #include <QListWidget>
+#include <QStandardItemModel>
 #include <QTabWidget>
 #include <QTimer>
 #include <QtConcurrentRun>
@@ -3654,6 +3658,39 @@ void MainWindow::RunUiPreview(const QString& dir) {
         }
     }
     dialog.hide();
+
+    // The game grid with sample entries (a real list needs games and keys).
+    {
+        QByteArray png;
+        QBuffer buffer{&png};
+        buffer.open(QIODevice::WriteOnly);
+        windowIcon().pixmap(256).save(&buffer, "PNG");
+        const std::vector<u8> icon(png.begin(), png.end());
+        QStandardItemModel sample_model;
+        const std::array<std::pair<const char*, u64>, 6> games{{
+            {"The Legend of Zelda: Ocarina of Time", 0x0400486024DEC000ULL},
+            {"Mario Kart World", 0x0400C3F00006E000ULL},
+            {"Juego de Switch 1", 0x0100000000010000ULL},
+            {"Donkey Kong Bananza", 0x040074A01BF12000ULL},
+            {"Otro juego de Switch 1", 0x0100000000020000ULL},
+            {"Kirby Air Riders", 0x040077201BE50000ULL},
+        }};
+        for (const auto& [name, program_id] : games) {
+            sample_model.appendRow(new GameListItemPath(
+                QStringLiteral("C:/Juegos/juego.nsp"), icon, QString::fromUtf8(name),
+                QStringLiteral("NSP"), program_id, 3600, QString{}));
+        }
+        GameGrid grid{this};
+        grid.resize(1100, 560);
+        grid.QListView::setModel(&sample_model);
+        grid.show();
+        QCoreApplication::processEvents();
+        grid.UpdateIconSize();
+        grid.setCurrentIndex(sample_model.index(1, 0));
+        save(&grid, QStringLiteral("gamelist_grid"));
+        grid.hide();
+        grid.QListView::setModel(nullptr);
+    }
 
     // The other dialogs, each shown without blocking, saved and closed.
     const auto save_dialog = [&](QDialog& other, const QString& name) {

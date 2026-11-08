@@ -44,7 +44,10 @@ void GameCard::paint(QPainter* painter, const QStyleOptionViewItem& option,
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
 
-    constexpr int cardCornerRadius = 10;
+    // The Lichii theme draws its own cards: the palette stays Windows' light one under a style
+    // sheet, so palette-coloured cards came out light grey on the dark list.
+    const bool lichii = UISettings::values.theme == std::string("lichii_dark");
+    const int cardCornerRadius = lichii ? 14 : 10;
 
     const QRect cardRect = getCardRect(option, index);
 
@@ -52,9 +55,23 @@ void GameCard::paint(QPainter* painter, const QStyleOptionViewItem& option,
     QColor backgroundColor = palette.window().color();
     QColor borderColor = palette.dark().color();
     QColor textColor = palette.text().color();
+    qreal border_width = 1.0;
 
-    // highlight on select or hover
-    if (option.state & QStyle::State_Selected) {
+    if (lichii) {
+        backgroundColor = QColor(0x1a, 0x1c, 0x22);
+        borderColor = QColor(0x24, 0x27, 0x2e);
+        textColor = QColor(0xe8, 0xea, 0xf0);
+        if (option.state & QStyle::State_Selected) {
+            backgroundColor = QColor(0x2a, 0x1c, 0x24);
+            borderColor = QColor(0xff, 0x4f, 0x6d);
+            textColor = Qt::white;
+            border_width = 2.0;
+        } else if (option.state & QStyle::State_MouseOver) {
+            backgroundColor = QColor(0x22, 0x25, 0x2d);
+            borderColor = QColor(0x3a, 0x3f, 0x4a);
+        }
+    } else if (option.state & QStyle::State_Selected) {
+        // highlight on select or hover
         backgroundColor = palette.highlight().color();
         borderColor = palette.highlight().color().lighter(150);
         textColor = palette.highlightedText().color();
@@ -63,7 +80,7 @@ void GameCard::paint(QPainter* painter, const QStyleOptionViewItem& option,
     }
 
     painter->setBrush(backgroundColor);
-    painter->setPen(QPen(borderColor, 1));
+    painter->setPen(QPen(borderColor, border_width));
     painter->drawRoundedRect(cardRect, cardCornerRadius, cardCornerRadius);
 
     const u32 icon_size = UISettings::values.game_icon_size.GetValue();

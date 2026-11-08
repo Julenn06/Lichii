@@ -7,6 +7,16 @@
 # Enable modules to include each other's files
 include_directories(.)
 
+# Before dynarmic so the JIT's own code (register allocation, IR passes) gets it too.
+if (LICHII_HOST_AVX2 AND ARCHITECTURE_x86_64)
+    if (MSVC)
+        add_compile_options(/arch:AVX2)
+    else()
+        add_compile_options(-march=x86-64-v3)
+    endif()
+    message(STATUS "Host code compiled for AVX2 CPUs (LICHII_HOST_AVX2)")
+endif()
+
 # Dynarmic
 if ((ARCHITECTURE_x86_64 OR ARCHITECTURE_arm64 OR ARCHITECTURE_riscv64 OR ARCHITECTURE_loongarch64) AND NOT YUZU_STATIC_ROOM)
     add_subdirectory(dynarmic)

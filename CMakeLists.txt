@@ -18,6 +18,9 @@ include(DetectPlatform)
 include(DetectArchitecture)
 include(DefaultConfig)
 include(UseLTO)
+# Host code for AVX2 CPUs (Intel Haswell, AMD Zen and newer): the compiler may use 256-bit vectors,
+# FMA and BMI2 in hot loops. Off by default: such a binary does not start on older CPUs.
+option(LICHII_HOST_AVX2 "Compile host code for AVX2-capable x86-64 CPUs" OFF)
 include(FasterLinker)
 include(UseCcache)
 include(CMakeDependentOption)

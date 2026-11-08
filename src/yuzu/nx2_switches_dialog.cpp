@@ -47,6 +47,12 @@ constexpr Documented DocumentedSwitches[] = {
     {"EDEN_NX2_BUFFER_DOWNLOADS", QT_TRANSLATE_NOOP("Nx2SwitchesDialog",
                                                     "1 copies GPU buffers back to the CPU. Slow "
                                                     "(38-63% fewer FPS); leave it off.")},
+    {"EDEN_NX2_PREFLUSH", QT_TRANSLATE_NOOP("Nx2SwitchesDialog",
+                                            "1 copies GPU data the game reads back ahead of time "
+                                            "instead of making the game wait for it. Ocarina of "
+                                            "Time: about 3 FPS more, but about a third of loads "
+                                            "into Castle Town render overexposed. Off by "
+                                            "default.")},
     {"EDEN_NX2_RESETFIX", QT_TRANSLATE_NOOP("Nx2SwitchesDialog",
                                             "Donkey Kong Bananza terrain fix (on by default). 0 "
                                             "leaves it to the GPU.")},
