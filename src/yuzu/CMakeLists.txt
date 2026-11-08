@@ -350,6 +350,31 @@ if (ENABLE_QT_TRANSLATION)
     # Compile english plurals TS file to en.qm
     qt_add_translation(LANGUAGES_QM ${PROJECT_SOURCE_DIR}/dist/english_plurals/en.ts)
 
+    # Qt's own strings (OK, Cancel, Yes, Save in standard dialogs) for the same languages: without
+    # qtbase_<language>.qm those buttons stayed in English in every translation.
+    set(QT_TRANSLATIONS_DIR "")
+    if (DEFINED QT6_INSTALL_PREFIX AND DEFINED QT6_INSTALL_TRANSLATIONS)
+        set(QT_TRANSLATIONS_DIR "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_TRANSLATIONS}")
+    elseif (TARGET Qt6::qmake)
+        get_target_property(_qmake Qt6::qmake IMPORTED_LOCATION)
+        get_filename_component(QT_TRANSLATIONS_DIR "${_qmake}/../../translations" ABSOLUTE)
+    endif()
+    foreach (TS ${LANGUAGES_TS})
+        get_filename_component(_lang ${TS} NAME_WE)
+        # Qt names some without the region (qtbase_ja for ja_JP); QTranslator::load falls back
+        # from qtbase_ja_JP to qtbase_ja on its own.
+        string(REGEX REPLACE "_.*$" "" _lang_only "${_lang}")
+        foreach (_name ${_lang} ${_lang_only})
+            set(_qt_qm "${QT_TRANSLATIONS_DIR}/qtbase_${_name}.qm")
+            if (QT_TRANSLATIONS_DIR AND EXISTS "${_qt_qm}" AND
+                NOT "${CMAKE_CURRENT_BINARY_DIR}/qtbase_${_name}.qm" IN_LIST LANGUAGES_QM)
+                configure_file("${_qt_qm}" "${CMAKE_CURRENT_BINARY_DIR}/qtbase_${_name}.qm" COPYONLY)
+                list(APPEND LANGUAGES_QM "${CMAKE_CURRENT_BINARY_DIR}/qtbase_${_name}.qm")
+                break()
+            endif()
+        endforeach()
+    endforeach()
+
     # Build a QRC file from the QM file list
     set(LANGUAGES_QRC ${CMAKE_CURRENT_BINARY_DIR}/languages.qrc)
     file(WRITE ${LANGUAGES_QRC} "<RCC><qresource prefix=\"languages\">\n")

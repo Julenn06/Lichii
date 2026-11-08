@@ -54,6 +54,7 @@ void LinkItemDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
 
     QTextDocument doc;
     QString html = index.data(Qt::DisplayRole).toString();
+    doc.setDefaultFont(options.font);
     doc.setHtml(html);
 
     options.text.clear();
@@ -70,6 +71,7 @@ QSize LinkItemDelegate::sizeHint(const QStyleOptionViewItem& option,
     initStyleOption(&options, index);
 
     QTextDocument doc;
+    doc.setDefaultFont(options.font); // the view's (themed) font, not the application default
     doc.setHtml(options.text);
     doc.setTextWidth(options.rect.width());
     return QSize(doc.idealWidth(), doc.size().height());
@@ -82,6 +84,7 @@ bool LinkItemDelegate::editorEvent(QEvent* event, QAbstractItemModel* model,
         if (mouseEvent->button() == Qt::LeftButton) {
             QString html = index.data(Qt::DisplayRole).toString();
             QTextDocument doc;
+            doc.setDefaultFont(option.font);
             doc.setHtml(html);
             doc.setTextWidth(option.rect.width());
 

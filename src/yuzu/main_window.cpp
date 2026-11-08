@@ -3654,6 +3654,47 @@ void MainWindow::RunUiPreview(const QString& dir) {
         }
     }
     dialog.hide();
+
+    // The other dialogs, each shown without blocking, saved and closed.
+    const auto save_dialog = [&](QDialog& other, const QString& name) {
+        other.show();
+        save(&other, name);
+        other.hide();
+    };
+    {
+        AboutDialog about{this};
+        save_dialog(about, QStringLiteral("dialog_about"));
+    }
+    {
+        DepsDialog deps{this};
+        save_dialog(deps, QStringLiteral("dialog_deps"));
+    }
+    {
+        DataDialog data_dialog{this};
+        save_dialog(data_dialog, QStringLiteral("dialog_data"));
+    }
+    {
+        Nx2SwitchesDialog switches{this};
+        save_dialog(switches, QStringLiteral("dialog_nx2_switches"));
+    }
+    {
+        SetPlayTimeDialog play_time{this, 3 * 3600 + 25 * 60};
+        save_dialog(play_time, QStringLiteral("dialog_play_time"));
+    }
+    {
+        // Sample text: the preview is a development tool, not translated.
+        QMessageBox box{QMessageBox::Question, QStringLiteral("Lichii"),
+                        QStringLiteral("¿Detener la emulación? Se perderá el progreso no "
+                                       "guardado."),
+                        QMessageBox::Yes | QMessageBox::No, this};
+        save_dialog(box, QStringLiteral("dialog_message"));
+    }
+    {
+        QInputDialog input{this};
+        input.setLabelText(QStringLiteral("Nombre nuevo:"));
+        input.setTextValue(QStringLiteral("Lichii"));
+        save_dialog(input, QStringLiteral("dialog_input"));
+    }
     QTimer::singleShot(0, qApp, &QCoreApplication::quit);
 }
 
@@ -5357,6 +5398,19 @@ void MainWindow::LoadTranslation() {
     } else {
         LOG_INFO(Frontend, "No translation for UI language \"{}\"; using English",
                  UISettings::values.language.GetValue());
+    }
+
+    // Qt's own strings (OK, Cancel, Yes, Save...), embedded next to ours.
+    qApp->removeTranslator(&qt_translator);
+    const bool qt_loaded =
+        UISettings::values.language.GetValue().empty()
+            ? qt_translator.load(QLocale(), QStringLiteral("qtbase"), QStringLiteral("_"),
+                                 QStringLiteral(":/languages/"))
+            : qt_translator.load(QStringLiteral("qtbase_") +
+                                     QString::fromStdString(UISettings::values.language.GetValue()),
+                                 QStringLiteral(":/languages/"));
+    if (qt_loaded) {
+        qApp->installTranslator(&qt_translator);
     }
 }
 
