@@ -1294,6 +1294,8 @@ void MainWindow::InitializeDebugWidgets() {
 }
 
 void MainWindow::InitializeRecentFileMenuActions() {
+    // Also called after "reset to defaults": do not stack a second copy of every entry.
+    ui->menu_recent_files->clear();
     for (int i = 0; i < max_recent_files_item; ++i) {
         actions_recent_files[i] = new QAction(this);
         actions_recent_files[i]->setVisible(false);
@@ -1309,6 +1311,17 @@ void MainWindow::InitializeRecentFileMenuActions() {
         UpdateRecentFiles();
     });
     ui->menu_recent_files->addAction(action_clear_recent_files);
+
+    if (action_continue_last == nullptr) {
+        action_continue_last = new QAction(this);
+        action_continue_last->setShortcut(QKeySequence{Qt::CTRL | Qt::SHIFT | Qt::Key_L});
+        action_continue_last->setShortcutContext(Qt::ApplicationShortcut);
+        connect(action_continue_last, &QAction::triggered, this, &MainWindow::OnMenuRecentFile);
+        const auto file_actions = ui->menu_File->actions();
+        QAction* const first = file_actions.isEmpty() ? nullptr : file_actions.first();
+        ui->menu_File->insertAction(first, action_continue_last);
+        ui->menu_File->insertSeparator(first);
+    }
 
     UpdateRecentFiles();
 }
@@ -2461,6 +2474,16 @@ void MainWindow::UpdateRecentFiles() {
 
     // Enable the recent files menu if the list isn't empty
     ui->menu_recent_files->setEnabled(num_recent_files != 0);
+
+    if (action_continue_last != nullptr) {
+        const QString last = num_recent_files != 0 ? UISettings::values.recent_files[0] : QString{};
+        action_continue_last->setText(
+            last.isEmpty() ? tr("&Continue Last Game")
+                           : tr("&Continue: %1").arg(QFileInfo(last).completeBaseName()));
+        action_continue_last->setData(last);
+        action_continue_last->setToolTip(last);
+        action_continue_last->setEnabled(!last.isEmpty());
+    }
 }
 
 void MainWindow::OnGameListLoadFile(QString game_path, u64 program_id) {

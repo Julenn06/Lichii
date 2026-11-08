@@ -593,6 +593,8 @@ private:
     ControllerDialog* controller_dialog = nullptr;
 
     QAction* actions_recent_files[max_recent_files_item];
+    /// File > Continue: starts the most recently played game in one click.
+    QAction* action_continue_last = nullptr;
 
     // stores default icon theme search paths for the platform
     QStringList default_theme_paths;
