@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <optional>
 #include <QDialog>
 #include "common/net/net.h"
 
@@ -18,11 +19,23 @@ public:
     explicit UpdateDialog(const Common::Net::Release& release, QWidget* parent = nullptr);
     ~UpdateDialog();
 
+    /// True once the installer is waiting for Lichii to close; the caller must then close the
+    /// main window so the files can be replaced.
+    bool InstallStarted() const {
+        return m_install_started;
+    }
+
 private slots:
     void Download();
 
 private:
+    /// Downloads this fork's package, checks it and hands it to the installer script.
+    void Install();
+    bool DownloadTo(const QString& filename);
+
     Ui::UpdateDialog* ui;
     QList<QRadioButton*> m_buttons;
     Common::Net::Asset m_asset;
+    QString m_release_url;
+    bool m_install_started = false;
 };

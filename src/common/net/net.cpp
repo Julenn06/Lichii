@@ -35,7 +35,7 @@ std::vector<Asset> Release::GetPlatformAssets(std::string_view platform) const {
     }
 
     const std::string host_url = "https://github.com";
-    const auto path = fmt::format("/{}/releases/download/{}/", Common::g_build_auto_update_repo, tag);
+    const auto path = base_download_url + "/";
     for (const auto extension : extensions) {
         const auto filename = fmt::format("lichii-{}{}", platform, extension);
         for (const auto& asset : assets) {
@@ -48,6 +48,33 @@ std::vector<Asset> Release::GetPlatformAssets(std::string_view platform) const {
         }
     }
     return {};
+}
+
+std::optional<Asset> Release::FindAsset(std::string_view prefix, std::string_view suffix) const {
+    constexpr std::string_view host_url = "https://github.com";
+    const std::string path = base_download_url + "/";
+    for (std::size_t i = 0; i < assets.size(); ++i) {
+        const std::string_view asset = assets[i];
+        if (!asset.starts_with(host_url)) {
+            continue;
+        }
+        const std::string_view rest = asset.substr(host_url.size());
+        if (!rest.starts_with(path)) {
+            continue;
+        }
+        const std::string_view filename = rest.substr(path.size());
+        if (filename.size() <= prefix.size() + suffix.size() ||
+            filename.find('/') != std::string_view::npos || !filename.starts_with(prefix) ||
+            !filename.ends_with(suffix)) {
+            continue;
+        }
+        return Asset{.name = "Standard",
+                     .url = std::string{host_url},
+                     .path = std::string{rest},
+                     .filename = std::string{filename},
+                     .digest = i < asset_digests.size() ? asset_digests[i] : std::string{}};
+    }
+    return std::nullopt;
 }
 
 static inline u64 ParseIsoTimestamp(const std::string& iso) {
@@ -109,7 +136,16 @@ std::optional<Release> Release::FromJson(const nlohmann::json& json, const std::
         return std::nullopt;
     }
     for (const auto& asset : assets) {
-        rel.assets.emplace_back(asset.value("browser_download_url", std::string{}));
+        if (!asset.is_object()) {
+            continue;
+        }
+        const auto url = asset.find("browser_download_url");
+        const auto digest = asset.find("digest");
+        rel.assets.emplace_back(url != asset.end() && url->is_string() ? url->get<std::string>()
+                                                                       : std::string{});
+        rel.asset_digests.emplace_back(digest != asset.end() && digest->is_string()
+                                           ? digest->get<std::string>()
+                                           : std::string{});
     }
 
     return rel;
@@ -199,6 +235,83 @@ std::optional<std::string> MakeRequest(const std::string& url, const std::string
         LOG_ERROR(Common, "GET to {}{} failed during update check: {}", url, path, e.what());
         return std::nullopt;
     }
+}
+
+DownloadResult Download(std::string url, std::string path,
+                        const std::function<bool(const char*, std::size_t)>& receiver,
+                        const std::function<bool(u64 current, u64 total)>& progress) {
+    DownloadResult out;
+    // github.com answers with a redirect to a signed URL on another host; httplib would build
+    // that second client without our CA store, so the redirects are followed here.
+    for (int hop = 0; hop < 6; ++hop) {
+        try {
+            httplib::Client client(url);
+            if (!client.is_valid()) {
+                out.error = "invalid URL " + url;
+                return out;
+            }
+            client.set_connection_timeout(15);
+            client.set_read_timeout(30);
+            client.set_write_timeout(15);
+            client.set_follow_location(false);
+#ifdef YUZU_BUNDLED_OPENSSL
+            client.load_ca_cert_store(kCert, sizeof(kCert));
+#endif
+            const httplib::Headers headers{{"User-Agent", "Lichii"},
+                                           {"Accept", "application/octet-stream"}};
+            int status = 0;
+            std::string location;
+            const auto result = client.Get(
+                path, headers,
+                [&](const httplib::Response& response) {
+                    status = response.status;
+                    if (status >= 300 && status < 400) {
+                        location = response.get_header_value("Location");
+                        return false;
+                    }
+                    return status >= 200 && status < 300;
+                },
+                [&](const char* data, std::size_t length) { return receiver(data, length); },
+                [&](std::size_t current, std::size_t total) {
+                    return !progress || progress(current, total);
+                });
+            out.status = status;
+            if (status >= 300 && status < 400) {
+                if (location.empty()) {
+                    out.error = "redirect without a location";
+                    return out;
+                }
+                if (location.starts_with('/')) {
+                    path = location;
+                    continue;
+                }
+                const auto scheme = location.find("://");
+                if (scheme == std::string::npos) {
+                    out.error = "unsupported redirect " + location;
+                    return out;
+                }
+                const auto slash = location.find('/', scheme + 3);
+                url = location.substr(0, slash);
+                path = slash == std::string::npos ? std::string{"/"} : location.substr(slash);
+                continue;
+            }
+            out.ok = result && status >= 200 && status < 300;
+            if (!result && status == 0) {
+                out.error = httplib::to_string(result.error());
+            }
+            if (!out.ok) {
+                LOG_ERROR(Common, "Download of {}{} failed: status {} {}", url, path, status,
+                          out.error);
+            }
+            return out;
+        } catch (const std::exception& e) {
+            out.error = e.what();
+            LOG_ERROR(Common, "Download of {}{} failed: {}", url, path, e.what());
+            return out;
+        }
+    }
+    out.error = "too many redirects";
+    return out;
 }
 
 std::vector<Release> GetReleases() {

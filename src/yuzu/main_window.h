@@ -451,6 +451,9 @@ private:
 
 #ifdef ENABLE_UPDATE_CHECKER
     void OnEmulatorUpdateAvailable();
+    /// Help > Check for Updates: asks GitHub and reports even when there is nothing new.
+    void OnCheckForUpdates();
+    void ShowUpdateDialog(const Common::Net::Release& release);
 #endif
 
 private:
@@ -512,6 +515,7 @@ private:
 #ifdef ENABLE_UPDATE_CHECKER
     QFuture<std::optional<Common::Net::Release>> update_future;
     QFutureWatcher<std::optional<Common::Net::Release>> update_watcher;
+    bool manual_update_check_running = false;
 #endif
 
     MultiplayerState* multiplayer_state = nullptr;

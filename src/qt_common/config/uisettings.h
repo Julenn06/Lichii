@@ -106,6 +106,8 @@ struct Values {
                                                            true};
 
     Setting<bool> first_start{linkage, true, "firstStart", Category::Ui};
+    // Set once the Lichii theme has been switched on for a configuration saved before it existed.
+    Setting<bool> lichii_theme_applied{linkage, false, "lichiiThemeApplied", Category::Ui};
     Setting<bool> pause_when_in_background{linkage,
                                            false,
                                            "pauseWhenInBackground",

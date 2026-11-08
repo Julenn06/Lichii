@@ -432,6 +432,14 @@ MainWindow::MainWindow(bool has_broken_vulkan)
     QIcon::setFallbackSearchPaths(QStringList(QStringLiteral(":/icons")));
 
     default_theme_paths = QIcon::themeSearchPaths();
+    // Configurations saved before the Lichii theme existed keep the theme chosen back then (often
+    // the old default), so the new look never showed up: switch to it once. Settings > General
+    // can still pick another one, and that choice is kept from then on.
+    if (!UISettings::values.lichii_theme_applied.GetValue()) {
+        UISettings::values.lichii_theme_applied = true;
+        UISettings::values.theme =
+            UISettings::themes[static_cast<size_t>(UISettings::Theme::Lichii)].second;
+    }
     UpdateUITheme();
 
     SetDiscordEnabled(UISettings::values.enable_discord_presence.GetValue());
@@ -1555,6 +1563,11 @@ void MainWindow::ConnectMenuEvents() {
     });
     QAction* const report_action = ui->menu_Help->addAction(tr("Create &Bug Report..."));
     connect(report_action, &QAction::triggered, this, [this] { BugReport::Create(this); });
+#ifdef ENABLE_UPDATE_CHECKER
+    QAction* const update_action = new QAction(tr("Check for &Updates..."), this);
+    ui->menu_Help->insertAction(ui->action_About, update_action);
+    connect(update_action, &QAction::triggered, this, &MainWindow::OnCheckForUpdates);
+#endif
 
     // File
     connect_menu(ui->action_Load_File, &MainWindow::OnMenuLoadFile);
@@ -3732,6 +3745,26 @@ void MainWindow::RunUiPreview(const QString& dir) {
         input.setTextValue(QStringLiteral("Lichii"));
         save_dialog(input, QStringLiteral("dialog_input"));
     }
+#ifdef ENABLE_UPDATE_CHECKER
+    {
+        Common::Net::Release release{};
+        release.tag = "v9.9.9";
+        release.title = "Lichii Frizti v3 mejorado v9.9.9";
+        release.body = "## Novedades\n\n- Buscar actualizaciones desde Ayuda.\n- Instalación "
+                       "automática que conserva la carpeta user.\n";
+        release.html_url = "https://github.com/Julenn06/Lichii/releases/tag/v9.9.9";
+        release.base_download_url = "/Julenn06/Lichii/releases/download/v9.9.9";
+        release.assets = {"https://github.com/Julenn06/Lichii/releases/download/v9.9.9/"
+                          "Lichii-Frizti-v3-mejorado-v9.9.9-windows-x64.zip"};
+        UpdateDialog update{release, this};
+        save_dialog(update, QStringLiteral("dialog_update"));
+    }
+#endif
+    if (QMenu* menu = ui->menu_Help) {
+        menu->popup(mapToGlobal(QPoint(0, menuBar()->height())));
+        save(menu, QStringLiteral("menu_help"));
+        menu->hide();
+    }
     QTimer::singleShot(0, qApp, &QCoreApplication::quit);
 }
 
@@ -4706,11 +4739,76 @@ void MainWindow::OnCaptureScreenshot() {
 #ifdef ENABLE_UPDATE_CHECKER
 void MainWindow::OnEmulatorUpdateAvailable() {
     std::optional<Common::Net::Release> version = update_future.result();
-    if (!version)
+    // Not in the middle of a game: Help > Check for Updates offers it again later.
+    if (!version || emulation_running)
         return;
 
-    UpdateDialog dialog(version.value(), this);
-    dialog.exec();
+    ShowUpdateDialog(*version);
+}
+
+void MainWindow::ShowUpdateDialog(const Common::Net::Release& release) {
+    UpdateDialog dialog(release, this);
+    if (dialog.exec() == QDialog::Accepted && dialog.InstallStarted()) {
+        // The installer waits for this process to exit before it replaces the files.
+        QTimer::singleShot(0, this, &QMainWindow::close);
+    }
+}
+
+void MainWindow::OnCheckForUpdates() {
+    if (manual_update_check_running) {
+        return;
+    }
+    if (emulation_running) {
+        QMessageBox::information(this, tr("Check for Updates"),
+                                 tr("Stop the game before updating Lichii."));
+        return;
+    }
+    manual_update_check_running = true;
+    QApplication::setOverrideCursor(Qt::BusyCursor);
+    statusBar()->showMessage(tr("Checking for updates..."));
+
+    auto* const watcher = new QFutureWatcher<UpdateChecker::CheckResult>(this);
+    connect(watcher, &QFutureWatcher<UpdateChecker::CheckResult>::finished, this,
+            [this, watcher] {
+                watcher->deleteLater();
+                manual_update_check_running = false;
+                QApplication::restoreOverrideCursor();
+                statusBar()->clearMessage();
+
+                const UpdateChecker::CheckResult result = watcher->result();
+                const QString current = QString::fromUtf8(
+                    UpdateChecker::CurrentVersion().data(),
+                    static_cast<qsizetype>(UpdateChecker::CurrentVersion().size()));
+                switch (result.status) {
+                case UpdateChecker::CheckStatus::UpdateAvailable:
+                    if (emulation_running) {
+                        QMessageBox::information(this, tr("Check for Updates"),
+                                                 tr("Stop the game before updating Lichii."));
+                    } else {
+                        ShowUpdateDialog(*result.release);
+                    }
+                    break;
+                case UpdateChecker::CheckStatus::UpToDate:
+                    QMessageBox::information(this, tr("Check for Updates"),
+                                             tr("You have the latest version (v%1).").arg(current));
+                    break;
+                case UpdateChecker::CheckStatus::NetworkError:
+                    QMessageBox::warning(this, tr("Check for Updates"),
+                                         tr("Could not reach GitHub to check for updates. Check "
+                                            "your Internet connection and try again."));
+                    break;
+                case UpdateChecker::CheckStatus::Unsupported:
+                    QMessageBox::information(
+                        this, tr("Check for Updates"),
+                        tr("This build of Lichii has no version number to compare, so it cannot "
+                           "update itself. New versions are on GitHub."));
+                    QDesktopServices::openUrl(
+                        QUrl{QStringLiteral("https://github.com/%1/releases")
+                                 .arg(QString::fromUtf8(Common::g_build_auto_update_repo))});
+                    break;
+                }
+            });
+    watcher->setFuture(QtConcurrent::run([] { return UpdateChecker::CheckForUpdate(); }));
 }
 #endif
 

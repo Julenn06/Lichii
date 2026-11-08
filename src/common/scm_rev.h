@@ -20,6 +20,8 @@ extern const char g_build_version[];
 extern const char g_build_id[];
 extern const char g_build_release_tag[];
 extern const char g_build_release_platform[];
+/// This fork's release version ("3.6.0", tag v3.6.0 on Julenn06/Lichii); empty when unknown.
+extern const char g_mejorado_version[];
 extern const char g_title_bar_format_idle[];
 extern const char g_title_bar_format_running[];
 extern const char g_shader_cache_version[];

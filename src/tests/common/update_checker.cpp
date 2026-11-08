@@ -146,3 +146,132 @@ TEST_CASE("Release requests handle HTTP failures without throwing", "[updater]")
         Common::Net::MakeRequest("http://127.0.0.1:" + std::to_string(port), "/releases");
     CHECK(response.has_value() == (status == 200));
 }
+
+namespace {
+
+Common::Net::Release MakeForkRelease(std::string tag, bool prerelease = false,
+                                     std::string filename = {}) {
+    if (filename.empty()) {
+        filename = "Lichii-Frizti-v3-mejorado-" + tag + "-windows-x64.zip";
+    }
+    const nlohmann::json json{
+        {"tag_name", tag},
+        {"name", "Lichii Frizti v3 mejorado " + tag},
+        {"prerelease", prerelease},
+        {"assets",
+         {{{"browser_download_url",
+            "https://github.com/Julenn06/Lichii/releases/download/" + tag + "/" + filename},
+           {"digest", "sha256:abc123"}}}},
+    };
+    return Common::Net::Release::FromJson(json, "https://api.github.com", "Julenn06/Lichii")
+        .value();
+}
+
+} // namespace
+
+TEST_CASE("Fork versions parse only as three plain numbers", "[updater]") {
+    using UpdateChecker::ParseVersion;
+    CHECK(ParseVersion("3.6.0") == UpdateChecker::Version{3, 6, 0});
+    CHECK(ParseVersion("v3.10.2") == UpdateChecker::Version{3, 10, 2});
+    const std::string bad = GENERATE("", "v", "3", "3.6", "3.6.0.1", "3.6.x", "v3.6.0-rc1",
+                                     "-3.6.0", "+3.6.0", "3..6", " 3.6.0", "3.6.0 ", "vv3.6.0",
+                                     "3.6.99999999999");
+    CHECK_FALSE(ParseVersion(bad));
+}
+
+TEST_CASE("Fork updates pick the newest stable version with a package", "[updater]") {
+    const auto releases = std::array{
+        MakeForkRelease("v3.5.0"),
+        MakeForkRelease("v3.10.0"),
+        MakeForkRelease("v3.9.1"),
+        MakeForkRelease("v4.0.0", true),
+        MakeForkRelease("v3.11.0", false, "Lichii-Frizti-v3-mejorado-v3.11.0-linux.tar.gz"),
+        MakeForkRelease("build-200"),
+    };
+    const auto update = UpdateChecker::SelectVersionUpdate(releases, "3.6.0", "-windows-x64.zip");
+    REQUIRE(update);
+    CHECK(update->tag == "v3.10.0");
+    CHECK_FALSE(UpdateChecker::SelectVersionUpdate(releases, "3.10.0", "-windows-x64.zip"));
+    CHECK_FALSE(UpdateChecker::SelectVersionUpdate(releases, "", "-windows-x64.zip"));
+    CHECK_FALSE(UpdateChecker::SelectVersionUpdate(releases, "3.6.0", ""));
+}
+
+TEST_CASE("Fork packages come only from the release's own github.com download", "[updater]") {
+    auto release = MakeForkRelease("v3.7.0");
+    const auto asset = release.FindAsset("Lichii-Frizti-v3-mejorado-", "-windows-x64.zip");
+    REQUIRE(asset);
+    CHECK(asset->url == "https://github.com");
+    CHECK(asset->path == "/Julenn06/Lichii/releases/download/v3.7.0/"
+                         "Lichii-Frizti-v3-mejorado-v3.7.0-windows-x64.zip");
+    CHECK(asset->filename == "Lichii-Frizti-v3-mejorado-v3.7.0-windows-x64.zip");
+    CHECK(asset->digest == "sha256:abc123");
+
+    const std::string url = GENERATE(
+        "https://github.com/Other/Lichii/releases/download/v3.7.0/"
+        "Lichii-Frizti-v3-mejorado-v3.7.0-windows-x64.zip",
+        "https://github.com/Julenn06/Lichii/releases/download/v3.6.0/"
+        "Lichii-Frizti-v3-mejorado-v3.7.0-windows-x64.zip",
+        "https://github.com.example.com/Julenn06/Lichii/releases/download/v3.7.0/"
+        "Lichii-Frizti-v3-mejorado-v3.7.0-windows-x64.zip",
+        "https://github.com/Julenn06/Lichii/releases/download/v3.7.0/sub/"
+        "Lichii-Frizti-v3-mejorado-v3.7.0-windows-x64.zip",
+        "https://github.com/Julenn06/Lichii/releases/download/v3.7.0/"
+        "Lichii-Frizti-v3-mejorado--windows-x64.zip");
+    release.assets = {url};
+    CHECK_FALSE(release.FindAsset("Lichii-Frizti-v3-mejorado-", "-windows-x64.zip"));
+}
+
+TEST_CASE("Release assets tolerate missing or null digests", "[updater]") {
+    const std::string_view json =
+        R"([{"tag_name":"v3.7.0","assets":[{"browser_download_url":"https://github.com/a/b/releases/download/v3.7.0/x.zip","digest":null},{"browser_download_url":"https://github.com/a/b/releases/download/v3.7.0/y.zip"},42]}])";
+    const auto releases =
+        Common::Net::Release::ListFromJson(json, "https://api.github.com", "a/b");
+    REQUIRE(releases.size() == 1);
+    REQUIRE(releases[0].assets.size() == 2);
+    CHECK(releases[0].asset_digests == std::vector<std::string>{"", ""});
+}
+
+TEST_CASE("Downloads follow redirects to another host", "[updater]") {
+    httplib::Server storage;
+    storage.Get("/blob", [](const httplib::Request&, httplib::Response& response) {
+        response.set_content("package-bytes", "application/octet-stream");
+    });
+    const int storage_port = storage.bind_to_any_port("127.0.0.1");
+    REQUIRE(storage_port > 0);
+    httplib::Server origin;
+    origin.Get("/asset", [storage_port](const httplib::Request&, httplib::Response& response) {
+        response.set_redirect("http://127.0.0.1:" + std::to_string(storage_port) + "/blob?sig=1");
+    });
+    origin.Get("/missing", [](const httplib::Request&, httplib::Response& response) {
+        response.status = 404;
+    });
+    const int origin_port = origin.bind_to_any_port("127.0.0.1");
+    REQUIRE(origin_port > 0);
+    const std::jthread storage_thread([&storage](std::stop_token stop) {
+        const std::stop_callback stop_server(stop, [&storage] { storage.stop(); });
+        storage.listen_after_bind();
+    });
+    const std::jthread origin_thread([&origin](std::stop_token stop) {
+        const std::stop_callback stop_server(stop, [&origin] { origin.stop(); });
+        origin.listen_after_bind();
+    });
+    storage.wait_until_ready();
+    origin.wait_until_ready();
+
+    const std::string origin_url = "http://127.0.0.1:" + std::to_string(origin_port);
+    std::string body;
+    const auto receiver = [&body](const char* data, std::size_t length) {
+        body.append(data, length);
+        return true;
+    };
+    const auto ok = Common::Net::Download(origin_url, "/asset", receiver, nullptr);
+    CHECK(ok.ok);
+    CHECK(ok.status == 200);
+    CHECK(body == "package-bytes");
+
+    body.clear();
+    const auto missing = Common::Net::Download(origin_url, "/missing", receiver, nullptr);
+    CHECK_FALSE(missing.ok);
+    CHECK(missing.status == 404);
+    CHECK(body.empty());
+}

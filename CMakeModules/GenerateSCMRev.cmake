@@ -56,11 +56,21 @@ endif()
 
 # Generate cpp with Git revision from template
 
-set(BUILD_AUTO_UPDATE_STABLE_REPO "zortos293/Lichii")
+# This fork's releases (vX.Y.Z on Julenn06/Lichii): dist/mejorado_version.txt holds the version
+# this build is; Help > Check for Updates compares it with the published releases.
+set(MEJORADO_VERSION "")
+set(MEJORADO_VERSION_FILE "${CMAKE_SOURCE_DIR}/dist/mejorado_version.txt")
+if (EXISTS "${MEJORADO_VERSION_FILE}")
+    file(STRINGS "${MEJORADO_VERSION_FILE}" MEJORADO_VERSION LIMIT_COUNT 1
+         REGEX "^[0-9]+[.][0-9]+[.][0-9]+$")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${MEJORADO_VERSION_FILE}")
+endif()
+
+set(BUILD_AUTO_UPDATE_STABLE_REPO "Julenn06/Lichii")
 set(BUILD_AUTO_UPDATE_STABLE_API "api.github.com")
-set(BUILD_AUTO_UPDATE_API_PATH "/repos/zortos293/Lichii/releases?per_page=100")
+set(BUILD_AUTO_UPDATE_API_PATH "/repos/Julenn06/Lichii/releases?per_page=100")
 set(BUILD_AUTO_UPDATE_WEBSITE "https://github.com")
-set(BUILD_AUTO_UPDATE_REPO "zortos293/Lichii")
+set(BUILD_AUTO_UPDATE_REPO "Julenn06/Lichii")
 if (NIGHTLY_BUILD)
     set(REPO_NAME "Lichii Nightly")
 else()
