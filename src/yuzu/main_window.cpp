@@ -2000,6 +2000,17 @@ void MainWindow::BootGame(const QString& filename, Service::AM::FrontendAppletPa
             UpdateDockedButton();
         }
     }
+    {
+        // Which emulated controllers the game will see, to diagnose "works in Settings only".
+        auto& hid = QtCommon::system->HIDCore();
+        for (const auto id : {Core::HID::NpadIdType::Player1, Core::HID::NpadIdType::Player2,
+                              Core::HID::NpadIdType::Handheld}) {
+            const auto* const controller = hid.GetEmulatedController(id);
+            LOG_INFO(Frontend, "Controller {}: connected={} style={} docked={}",
+                     static_cast<int>(id), controller->IsConnected(),
+                     static_cast<int>(controller->GetNpadStyleIndex()), Settings::IsDockedMode());
+        }
+    }
     boot_in_progress = true;
     game_list->SetScanEnabled(false);
     QElapsedTimer boot_timer;
