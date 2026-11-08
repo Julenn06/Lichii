@@ -1988,6 +1988,18 @@ void MainWindow::BootGame(const QString& filename, Service::AM::FrontendAppletPa
     if (boot_in_progress || close_pending) {
         return;
     }
+    // Handheld mode with nothing on the handheld slot: the game polls the handheld controller and
+    // ignores Player 1's Pro Controller, which still works in Settings. Use docked mode instead.
+    if (!Settings::IsDockedMode()) {
+        auto& hid = QtCommon::system->HIDCore();
+        const auto* const player_1 = hid.GetEmulatedController(Core::HID::NpadIdType::Player1);
+        const auto* const handheld = hid.GetEmulatedController(Core::HID::NpadIdType::Handheld);
+        if (!handheld->IsConnected() && player_1->IsConnected()) {
+            LOG_WARNING(Frontend, "Handheld mode without a handheld controller: using docked mode");
+            Settings::values.use_docked_mode.SetValue(Settings::ConsoleMode::Docked);
+            UpdateDockedButton();
+        }
+    }
     boot_in_progress = true;
     game_list->SetScanEnabled(false);
     QElapsedTimer boot_timer;
