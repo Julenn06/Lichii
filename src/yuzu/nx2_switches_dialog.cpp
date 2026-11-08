@@ -53,6 +53,12 @@ constexpr Documented DocumentedSwitches[] = {
                                             "Time: about 3 FPS more, but about a third of loads "
                                             "into Castle Town render overexposed. Off by "
                                             "default.")},
+    {"EDEN_NX2_PERF_ON", QT_TRANSLATE_NOOP("Nx2SwitchesDialog",
+                                           "async_pipelines translates new shaders on worker "
+                                           "threads instead of stalling the game for ~5 ms each "
+                                           "(about 4% of the time while new areas load). Off by "
+                                           "default: it was reverted upstream with a wrong-"
+                                           "geometry report in Kokiri Forest.")},
     {"EDEN_NX2_RESETFIX", QT_TRANSLATE_NOOP("Nx2SwitchesDialog",
                                             "Donkey Kong Bananza terrain fix (on by default). 0 "
                                             "leaves it to the GPU.")},
