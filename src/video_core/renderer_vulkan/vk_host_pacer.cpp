@@ -23,10 +23,43 @@ using Ms = std::chrono::duration<double, std::milli>;
 Ns ToNs(double ns) {
     return Ns{static_cast<s64>(ns)};
 }
+
+#ifdef _WIN32
+// The refresh period of the monitor showing the foreground window, when that window is ours.
+// The compositor reports the primary monitor only, so a game on a second monitor at another rate
+// (60 Hz primary, 144 Hz game screen) was paced for the wrong display.
+std::optional<double> ForegroundMonitorPeriodNs() {
+    HWND window = GetForegroundWindow();
+    DWORD process_id = 0;
+    if (window == nullptr || GetWindowThreadProcessId(window, &process_id) == 0 ||
+        process_id != GetCurrentProcessId()) {
+        return std::nullopt;
+    }
+    HMONITOR monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONULL);
+    MONITORINFOEXW info{};
+    info.cbSize = sizeof(info);
+    if (monitor == nullptr || !GetMonitorInfoW(monitor, &info)) {
+        return std::nullopt;
+    }
+    DEVMODEW mode{};
+    mode.dmSize = sizeof(mode);
+    if (!EnumDisplaySettingsW(info.szDevice, ENUM_CURRENT_SETTINGS, &mode) ||
+        mode.dmDisplayFrequency <= 1) {
+        return std::nullopt;
+    }
+    return 1e9 / mode.dmDisplayFrequency;
+}
+#endif
 } // Anonymous namespace
 
 std::optional<double> QueryRefreshPeriodNs() {
 #ifdef _WIN32
+    const std::optional<double> own = ForegroundMonitorPeriodNs();
+    // The monitor's mode is a whole number of Hz (59 for 59.94): only a clearly different rate
+    // means the game is on another display than the compositor reports.
+    const auto prefer_own = [&own](double compositor) {
+        return own && std::abs(*own - compositor) > compositor * 0.02 ? *own : compositor;
+    };
     DWM_TIMING_INFO info{};
     info.cbSize = sizeof(info);
     if (SUCCEEDED(DwmGetCompositionTimingInfo(nullptr, &info)) &&
@@ -40,10 +73,13 @@ std::optional<double> QueryRefreshPeriodNs() {
             const double measured = 1e9 * static_cast<double>(info.qpcRefreshPeriod) /
                                     static_cast<double>(frequency.QuadPart);
             if (std::abs(measured - nominal) < nominal * 0.01) {
-                return measured;
+                return prefer_own(measured);
             }
         }
-        return nominal;
+        return prefer_own(nominal);
+    }
+    if (own) {
+        return own;
     }
     DEVMODEW mode{};
     mode.dmSize = sizeof(mode);

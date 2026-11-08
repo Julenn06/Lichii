@@ -432,6 +432,20 @@ bool PresentManager::PaceFrame(Frame* frame, std::stop_token token) {
         scheduler.GetMasterSemaphore().Wait(frame->render_tick);
     }
     const auto start = Clock::now();
+    // Sleeps until the last 1.5 ms (Windows sleeps in 0.5-1 ms steps), then yields up to target.
+    const auto hold_until = [&](Clock::time_point target) {
+        Common::Nx2Timeline::Span span{"present: host pacing hold"};
+        for (auto now = start; now < target && !token.stop_requested(); now = Clock::now()) {
+            const auto left = target - now;
+            if (left > std::chrono::microseconds{1500}) {
+                std::this_thread::sleep_for(left - std::chrono::microseconds{1000});
+            } else {
+                std::this_thread::yield();
+            }
+        }
+        pacer.NoteHold(Clock::now() - start);
+        return true;
+    };
     // 30 FPS and below: no hold. Holding a frame for its refresh kept the GPU thread from
     // getting a frame for the next one, so every frame arrived right after the last was shown
     // and waited a whole frame (~30 ms of input lag). The game's pacing lines its frames up with
@@ -446,34 +460,14 @@ bool PresentManager::PaceFrame(Frame* frame, std::stop_token token) {
         if (target <= start || target - start >= pacer.RefreshPeriod()) {
             return false;
         }
-        Common::Nx2Timeline::Span span{"present: host pacing hold"};
-        for (auto now = start; now < target && !token.stop_requested(); now = Clock::now()) {
-            const auto left = target - now;
-            if (left > std::chrono::microseconds{1500}) {
-                std::this_thread::sleep_for(left - std::chrono::microseconds{1000});
-            } else {
-                std::this_thread::yield();
-            }
-        }
-        pacer.NoteHold(Clock::now() - start);
-        return true;
+        return hold_until(target);
     }
     VideoCommon::Nx2Perf::g_host_phase_ns.store(-1, std::memory_order_relaxed);
     const auto target = pacer.Target(start);
     if (target <= start) {
         return false;
     }
-    Common::Nx2Timeline::Span span{"present: host pacing hold"};
-    for (auto now = start; now < target && !token.stop_requested(); now = Clock::now()) {
-        const auto left = target - now;
-        if (left > std::chrono::microseconds{1500}) {
-            std::this_thread::sleep_for(left - std::chrono::microseconds{1000});
-        } else {
-            std::this_thread::yield();
-        }
-    }
-    pacer.NoteHold(Clock::now() - start);
-    return true;
+    return hold_until(target);
 }
 
 void PresentManager::PresentWaitThread(std::stop_token token) {
