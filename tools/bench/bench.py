@@ -398,6 +398,16 @@ def main():
         if not result['runs']:
             result['runs'] = [{'fps_avg': debug.status()['fps']}]
         result['fps_avg'] = round(statistics.mean(r['fps_avg'] for r in result['runs']), 2)
+        if result['fps_avg'] < 1.0 and proc.poll() is None:
+            # Juego congelado: las pilas de todos los hilos antes de cerrar (al cerrar cambian).
+            result['frozen'] = True
+            try:
+                frozen = debug.call('sample', {'threads': '*', 'seconds': 1, 'max_chars': 0},
+                                    timeout=120.0)
+                shutil.copyfile(frozen['file'], f'{run_dir}/freeze_samples.txt')
+                result['freeze_samples'] = f'{run_dir}/freeze_samples.txt'
+            except Exception as error:
+                result['freeze_samples'] = f'sin pilas: {error}'
         if args.timeline > 0:
             result['timeline'] = debug.call('timeline', {'seconds': args.timeline})
         if args.sample:
