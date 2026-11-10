@@ -196,6 +196,11 @@ the self, self-and-caller and inclusive counts per function. The report and its 
 to `samples-<session>-<n>.txt` in the dump directory. Windows only; the threads run slower while
 sampled, so read fps from a run without it.
 
+**`crash_test`** `{confirm: "crash this process"}` ends the emulator with an access violation on
+purpose. It is how the Windows crash report (`src/yuzu/crash_report.cpp`: a `.txt` with the
+faulting stack and a minidump in `user/crash_dumps`) is checked with a game running. Without the
+exact `confirm` string it does nothing.
+
 **`reject_shaders`** `{hashes?, reject?, timeout_s?}`. This is `EDEN_NX2_REJECT_HASH` at
 runtime: the same keys (native program key or shader hash) and the same effect. Pipeline
 invalidation turned out to be tractable:

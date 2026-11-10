@@ -30,11 +30,17 @@ using MiniDumpWriteDumpFn = BOOL(WINAPI*)(HANDLE, DWORD, HANDLE, int, const void
                                           const void*);
 MiniDumpWriteDumpFn g_write_dump = nullptr;
 
+// MINIDUMP_EXCEPTION_INFORMATION, which dbghelp.h declares packed to 4 bytes: with natural
+// alignment the pointer sits 4 bytes later, MiniDumpWriteDump reads a wrong one and fails (the
+// dump stayed empty).
+#pragma pack(push, 4)
 struct DumpExceptionInformation {
     DWORD thread_id;
     EXCEPTION_POINTERS* exception_pointers;
     BOOL client_pointers;
 };
+#pragma pack(pop)
+static_assert(sizeof(DumpExceptionInformation) == 16);
 
 void Write(HANDLE file, const char* text, int length) {
     if (length > 0) {

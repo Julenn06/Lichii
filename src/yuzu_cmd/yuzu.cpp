@@ -119,11 +119,15 @@ static LONG WINAPI WriteCrashDump(EXCEPTION_POINTERS* exception) {
         PrintCodeAddress("frame", frames[i]);
     }
     std::fflush(stderr);
+    // MINIDUMP_EXCEPTION_INFORMATION is packed to 4 bytes (dbghelp.h); with natural alignment
+    // MiniDumpWriteDump reads a wrong exception pointer and fails.
+#pragma pack(push, 4)
     struct ExceptionInformation {
         DWORD thread_id;
         EXCEPTION_POINTERS* exception_pointers;
         BOOL client_pointers;
     };
+#pragma pack(pop)
     using MiniDumpWriteDumpFn = BOOL(WINAPI*)(HANDLE, DWORD, HANDLE, int, const ExceptionInformation*,
                                               const void*, const void*);
     const HMODULE dbghelp = LoadLibraryA("dbghelp.dll");

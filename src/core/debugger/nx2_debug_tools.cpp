@@ -396,6 +396,18 @@ json PgoDump(ToolState&, const json&) {
 #endif
 }
 
+// Ends the process with an access violation, on purpose: the way to check that the frontend's
+// crash report (yuzu/crash_report.cpp) is written with a game running. `confirm` must be the
+// literal string, so a stray call cannot take the owner's game down.
+json CrashTest(ToolState&, const json& params) {
+    if (params.value("confirm", std::string{}) != "crash this process") {
+        throw std::runtime_error{"pass confirm: \"crash this process\" to end the emulator"};
+    }
+    volatile int* const nowhere = nullptr;
+    *nowhere = 0;
+    return {};
+}
+
 json Timeline(ToolState& state, const json& params) {
     const double seconds = Param<double>(params, "seconds", 5.0, 0.1, 30.0);
     const auto stamp = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -639,6 +651,7 @@ Handlers MakeHandlers(const std::shared_ptr<ToolState>& state) {
         {"sample", handler(SampleThreads)},
         {"timeline", handler(Timeline)},
         {"pgo_dump", handler(PgoDump)},
+        {"crash_test", handler(CrashTest)},
         {"switch", handler(SetSwitch)},
         {"read_memory", handler(ReadMemory)},
         {"search_memory", handler(SearchMemory)},
