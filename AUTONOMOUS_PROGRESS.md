@@ -136,22 +136,53 @@ upstream también está hecho sobre nx2, no sobre la línea Frizti.
 Los símbolos del muestreador en la build de release (ICF) salen cambiados de nombre; para
 perfiles por función usar una build con `/OPT:NOICF` o las zonas de `EDEN_NX2_GPU_PROFILE`.
 
+## Comparación con upstream nx2 (2026-11-10, con permiso del usuario)
+
+Binarios oficiales de nx2 build 130 (PGO, incluye #858, #949, #1028 y #1056) en el mismo banco:
+`bench.py --app E:/lbench/upstream/b130-pgo` (sin `--exe`), datos en `E:/lbench/user-upstream`.
+
+| Build | Ajustes | FPS | ms por frame (su registro «last 600 presents») |
+|---|---|---|---|
+| v3.8.2 | banco | 38,2 - 40,5 | 24,0 - 25,0 |
+| nx2 b130 | por defecto (GPU «Alta»: sin división de hilos) | 28 - 30 | - |
+| nx2 b130 | igualados a los nuestros, hilos de GPU fijados (su defecto) | 33,3 / 33,3 | 30,2 - 30,5 |
+| nx2 b130 | igualados, `pin_gpu_threads=false` | 25,1 | 39,4 - 40,7 |
+
+- **nx2 es un 15-20 % más lento que este fork en este PC y esta escena. No se migra.**
+- Para comparar: la precisión de GPU por defecto de nx2 es «Alta» y con ella `GpuSplit` no arranca.
+  La configuración de `user-upstream` fija todos los ajustes de Renderer/Core/Cpu/System a los
+  valores efectivos de este fork (copia previa `qt-config.ini.bak_defaults`).
+- La caché de shaders de nx2 es otra y solo se guarda al cerrar limpio: calentarla con 2-3
+  ejecuciones y descartar las que tengan muchas líneas `async_pipelines`.
+- `EDEN_NX2_VSYNC_HZ=240` en nx2: series con paradas y un cuelgue al cerrar; sin dato fiable.
+- Este árbol ya fija los hilos de GPU a un núcleo físico cada uno con 6 o más núcleos
+  (`Common::PinCurrentThread`, `EDEN_NX2_PIN_THREADS=0` lo quita). Sin medir aún sin fijar.
+
+## Congelación vista una vez en v3.8.2 (2026-11-10)
+
+`E:/lbench/runs/ours382_e`: el juego dejó de presentar hacia el segundo 81 (carga de la partida),
+0 FPS y cierre forzado. `shutdown_hang_stacks.txt` (posterior a la orden de cierre): `GPUBack`
+esperando un `KLightLock` dentro de `INx2GpuSession::BackSparseWrite` -> `MapPageGroup`
+(`src/core/hle/service/nx2_gsv/gpu.h`), `CPUCore_1` en `GPU::OnCPURead` esperando la operación de
+sincronización, el resto de núcleos emulados en reposo. Ese código es anterior a los ports de la
+pasada 23. No reproducida en 7 arranques seguidos ni en los otros ~27 de las builds de la pasada.
+`bench.py` guarda ahora `freeze_samples.txt` (pilas en el momento de la congelación) cuando una
+medida da 0 FPS, y no mide con más de un 15 % de CPU ocupada por otros programas.
+
 ## Pendiente (por prioridad)
 
 1. AVX2 medido (A/B/A, 3 x 30 s): 38,3 y 38,6 FPS frente a 37,7 sin AVX2 (+2 %, dentro del ruido).
    No se adopta: no compensa dejar fuera las CPU sin AVX2.
 2. La pregunta nueva de Ocarina bloquea un banco sin `oot_smooth_offered=true` en su configuración.
-3. Requiere permiso del usuario: compilar y medir `upstream/nx2` (árbol en `E:\lup`, configurado
-   en `E:\lupbuild`). Trae #1056, #949, #1028 y #858, que atacan la espera front/back medida.
-   Si rinde más, migrar el fork sobre `nx2` (rama nueva desde nx2 + `git merge -s ours main`).
-4. Al migrar conservar: tema `lichii_dark`, `es.ts`, actualizador contra `Julenn06/Lichii`,
-   `nx2_switches_dialog`, `bug_report`, `crash_report`, «Continuar el último juego», versión del
-   fork en el título, opciones PGO de CMake, `tools/bench`. Descartar el troceo de `nx2_gsv.h`.
+3. nx2 medido (ver arriba): no se migra. Seguir portando a mano solo lo pequeño que aplique.
+4. Ideas sin medir: `EDEN_NX2_PIN_THREADS=0` y otros repartos de núcleos en el 5600X; enlazar la
+   release con `/OPT:NOICF` para que los informes de fallo y de cuelgue tengan símbolos fiables;
+   reducir el trabajo por draw del hilo `GPUBack` (bind stage buffers, method).
 5. Un cambio de versión o de `CMakeLists` provocó una recompilación casi completa del árbol
    clang (causa sin identificar; el commit posterior solo recompiló 18 pasos).
 
 ## Limitaciones
 
 - No se puede borrar el enlace `E:\lxsrc` desde la sesión (bloqueado); inofensivo.
-- El modo automático no permite ejecutar los binarios precompilados de upstream
-  (`E:\lbench\upstream`, build-130) ni compilar el árbol `upstream/nx2`.
+- El usuario usa el PC a ratos (compilaciones propias al 100 % de CPU): el banco se niega a
+  medir entonces; esperar a que quede libre, nunca cerrar sus programas.
