@@ -71,6 +71,7 @@ add_executable(tests
     common/queue_lifetime.cpp
     common/queue_timed_wait.cpp
     common/range_set_move.cpp
+    common/range_set_subtract.cpp
     video_core/uniform_cache_history.cpp
     video_core/x8d24_conversion.cpp
     video_core/ampere_ported_half_compare.cpp
@@ -91,6 +92,7 @@ add_executable(tests
     video_core/ampere_matrix.cpp
     video_core/spirv_software_matrix.cpp
     video_core/spirv_builtin_capabilities.cpp
+    video_core/virtual_range_cache.cpp
     common/bit_field.cpp
     common/cityhash.cpp
     common/container_hash.cpp
@@ -118,6 +120,7 @@ add_executable(tests
     core/priority_queue.cpp
     core/internal_network/network.cpp
     video_core/memory_tracker.cpp
+    video_core/invalidation_accumulator.cpp
     video_core/memory_manager_runs.cpp
     video_core/nx2_perf_draw_binds.cpp
     video_core/nx2_perf_texture_writes.cpp

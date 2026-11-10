@@ -30,7 +30,10 @@ public:
     static constexpr size_t MAX_ENTRIES = 8192;
     static constexpr size_t MAX_DEFERRED = 4096;
 
-    const VirtualSegments* Query(Tegra::MemoryManager& memory, GPUVAddr gpu_addr, u32 size) {
+    /// The segments of a range when it has more than one. Fewer than two means that it needs no
+    /// splitting: one segment may then cover more than the range asked for.
+    template <typename Memory = Tegra::MemoryManager>
+    const VirtualSegments* Query(Memory& memory, GPUVAddr gpu_addr, u32 size) {
         if (has_deferred.load(std::memory_order_acquire)) {
             ApplyDeferred();
         }
@@ -44,10 +47,15 @@ public:
         // before the walk, so a change during it makes the next query walk again.
         const u64 serial = memory.MapSerial();
         const auto it = entries.find(key);
-        if (it != entries.end() && it->second.as_id == as_id &&
-            it->second.gpu_addr == gpu_addr && it->second.size == size &&
+        if (it != entries.end() && it->second.as_id == as_id && it->second.gpu_addr == gpu_addr &&
             it->second.serial == serial) {
-            return &it->second.segments;
+            const Entry& cached = it->second;
+            // Titles bind one address with several sizes (Ocarina of Time ~2,000 times a second,
+            // half of them over 1 MiB). Keep the page table walk of the longest: its prefixes are
+            // contiguous too.
+            if (cached.size == size || (cached.segments.size() == 1 && size < cached.size)) {
+                return &cached.segments;
+            }
         }
         Entry entry{};
         entry.serial = serial;
