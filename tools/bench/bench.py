@@ -105,6 +105,24 @@ def measure(debug, seconds, step=0.5):
             'fps_stdev': round(statistics.pstdev(windows), 2), 'windows': len(windows)}
 
 
+def host_pacing(log_path, last=3):
+    """Frames que llegan a pantalla (incluye los generados), de los informes del pacer cada 10 s."""
+    import re
+    pattern = re.compile(r'Host pacing \w+: (\d+) frames at .*?interval mean ([0-9.]+) ms, '
+                         r'max ([0-9.]+)')
+    rows = []
+    try:
+        for line in open(log_path, encoding='utf-8', errors='replace'):
+            match = pattern.search(line)
+            if match:
+                rows.append({'host_fps': int(match.group(1)) / 10.0,
+                             'interval_mean_ms': float(match.group(2)),
+                             'interval_max_ms': float(match.group(3))})
+    except OSError:
+        pass
+    return rows[-last:]
+
+
 def scenario_kokiri(debug, proc, run_dir, args):
     """Titulo -> Continuar -> balcon de la casa de Link (Bosque Kokiri), partida del banco."""
     wait_for(debug, proc, lambda s: s['presents'] > 200 and s['fps'] > 20, 300, 'el titulo')
@@ -162,6 +180,8 @@ def main():
     parser.add_argument('--shots', action='store_true')
     parser.add_argument('--port', type=int, default=PORT)
     parser.add_argument('--app', help='carpeta de aplicacion alternativa (con su propio user/)')
+    parser.add_argument('--config', action='append', default=[],
+                        help='clave=valor de qt-config.ini solo para esta ejecucion')
     args = parser.parse_args()
     global APP
     if args.app:
@@ -192,6 +212,25 @@ def main():
     if os.path.isdir(pristine) and APP.lower().startswith('e:/lbench'):
         shutil.rmtree(save_dir, ignore_errors=True)
         shutil.copytree(pristine, save_dir)
+
+    config_path = f'{APP}/user/config/qt-config.ini'
+    config_backup = open(config_path, 'rb').read()
+    if args.config:
+        want = dict(pair.split('=', 1) for pair in args.config)
+        suffix = chr(92) + 'default'
+        patched = []
+        newline = chr(10)
+        for line in config_backup.decode('utf-8', errors='surrogateescape').split(newline):
+            key, sep, _ = line.partition('=')
+            if sep and key.endswith(suffix) and key[:-len(suffix)] in want:
+                line = f'{key}=false'
+            elif sep and key in want:
+                line = f'{key}={want.pop(key)}'
+            patched.append(line)
+        if want:
+            raise RuntimeError(f'claves de configuracion no encontradas: {sorted(want)}')
+        open(config_path, 'wb').write(
+            newline.join(patched).encode('utf-8', errors='surrogateescape'))
 
     env = dict(os.environ)
     env['EDEN_NX2_DEBUG_SERVER'] = f'127.0.0.1:{args.port}'
@@ -269,6 +308,9 @@ def main():
                 path = f'{APP}/user/log/{name}'
                 if os.path.isfile(path):
                     shutil.copyfile(path, f'{run_dir}/{name}')
+            result['host_pacing'] = host_pacing(f'{run_dir}/eden_log.txt')
+            # La configuracion del banco vuelve a su estado previo (el emulador la reescribe al salir).
+            open(config_path, 'wb').write(config_backup)
     json.dump(result, open(f'{run_dir}/result.json', 'w'), indent=1)
     print(json.dumps(result, indent=1))
     return 0

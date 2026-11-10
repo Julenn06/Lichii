@@ -22,7 +22,7 @@ Registro operativo para reanudar el trabajo entre sesiones. Conciso y técnico.
     Flags por las variables `LX_CFLAGS` / `LX_LDFLAGS`. Los argumentos `-DX=Y` no pasan por
     `cmd /c` (el `=` separa argumentos): añadirlos dentro del `.bat`.
 - Árboles: `E:\lbuild` (MSVC), `E:\lbgen` (clang instrumentado, `-fprofile-generate`),
-  `E:\lbclang` (clang + PGO propio + ThinLTO).
+  `E:\lrel` (release: clang + PGO + ThinLTO; `configure_release.bat`), `E:\lrelavx2` (igual con AVX2).
 - `E:\lxsrc` y `E:\lxbuild` son de la carpeta antigua (enlace roto): no usar.
 
 ## Banco de pruebas reproducible
@@ -50,28 +50,51 @@ Registro operativo para reanudar el trabajo entre sesiones. Conciso y técnico.
 - Referencia upstream en el mismo punto: 48–49,5 FPS (5900X, clang, `PREFLUSH`), comentario en
   `src/video_core/nx2_perf.h`.
 
-## Hecho en esta sesión
+## Hecho en esta sesión (2026-11-10)
 
 - Repo: faltaban `src/audio_core/out/*` (los ignoraba `.gitignore: out/`); recuperados del commit
   base de upstream y la regla limitada a `/out/`. El repositorio público no compilaba desde cero.
-- Compila con clang-cl 23 + STL de MSVC 14.52: `FindStorageAddr` en
-  `shader_recompiler/ir_opt/global_memory_to_storage_buffer_pass.cpp`.
-- Perfil PGO propio de Ocarina: `E:\lbench\pgo\oot.profdata` (recorrido de 4 min, 16 vueltas).
+- **v3.8.0 publicada**: motor compilado con clang-cl 23 + PGO propio de Ocarina
+  (`dist/pgo/lichii-oot.profdata`) + ThinLTO. Opciones de CMake `LICHII_PGO_PROFILE`,
+  `LICHII_PGO_GENERATE`, `LICHII_THIN_LTO`. Medido: MSVC 31,7 FPS → 37,1 FPS (+17 %).
+- Compila con clang-cl + STL de MSVC 14.52 (`FindStorageAddr` en
+  `shader_recompiler/ir_opt/global_memory_to_storage_buffer_pass.cpp`).
+- Cierre: `GPU::Impl::NotifyShutdown` libera a quien espera una operación de sincronización
+  (port de upstream #1058). Si aun así se cuelga, `shutdown_hang_stacks.txt` junto al log.
+- `src/yuzu/crash_report.cpp`: informe de fallos en Windows (`.txt` + `.dmp` en `user/crash_dumps`,
+  se guardan cinco). Verificado con el método `crash_test` del servidor de depuración.
+- `nx2_sampler.cpp`: el recorrido de pilas va protegido con SEH (antes tumbaba el proceso en
+  builds de clang).
+- `tools/bench`: banco de pruebas, scripts de compilación y `package.ps1`.
+
+## Resultados A/B (build clang + PGO, balcón de Kokiri, 2 x 30 s)
+
+| Variante | FPS |
+|---|---|
+| por defecto | 38,4 |
+| `EDEN_NX2_ACQUIRE_PRECHECK=2` | 38,0 |
+| `EDEN_NX2_ACQUIRE_EQUAL=1` | 38,4 |
+| `EDEN_NX2_PERF_ON=front_sleep` | 37,7 |
+| `EDEN_NX2_PREFLUSH=1` | 37,3 |
+| `EDEN_NX2_IDLE_SPIN_US=0` / `300` | 39,0 / 37,7 |
+
+Ninguno sale del ruido (±2 %). Lecturas DMA de macros: ~24.000/s sin drain y ~3.400/s con drain,
+el 82 % de estas por «compute/copy enviado desde la instantánea» (`GpuSplit::MayBeWrittenSince`).
 
 ## Pendiente (por prioridad)
 
-1. Medir `E:\lbclang` (clang + PGO + ThinLTO) contra 30,6 FPS y pasar sus tests.
-2. A/B de los interruptores experimentales ya presentes: `EDEN_NX2_ACQUIRE_PRECHECK=2`,
-   `EDEN_NX2_ACQUIRE_EQUAL=1`, `EDEN_NX2_ACQUIRE_LEARN=1`, `EDEN_NX2_PERF_ON=front_sleep`.
+1. AVX2 medido (A/B/A, 3 x 30 s): 38,3 y 38,6 FPS frente a 37,7 sin AVX2 (+2 %, dentro del ruido).
+   No se adopta: no compensa dejar fuera las CPU sin AVX2.
+2. Probar la generación de frames ya incluida (`frame_gen`, tipo FSR3, x2) como vía a 60 FPS
+   presentados; documentar calidad y coste antes de recomendarla.
 3. Requiere permiso del usuario: compilar y medir `upstream/nx2` (árbol en `E:\lup`, configurado
-   en `E:\lupbuild`). `nx2` trae #1056 (macros con lectura en el back), #949 (semáforos sin
-   drain), #1028 (lecturas asíncronas), #858 (menos trabajo por draw), que atacan el 53 % de
-   espera medido. Si rinde más, migrar el fork sobre `nx2` (rama nueva desde nx2 +
-   `git merge -s ours main`, sin forzar el push).
-4. Qué conservar al migrar: tema `lichii_dark`, `es.ts`, actualizador contra `Julenn06/Lichii`
-   (`dist/mejorado_version.txt`), `nx2_switches_dialog`, `bug_report`, «Continuar el último juego»,
-   versión del fork en el título. Descartar el troceo de `nx2_gsv.h` (choca con upstream).
-5. Cierre durante la carga de un juego: el hilo de emulación no para (upstream #1058 lo trata).
+   en `E:\lupbuild`). Trae #1056, #949, #1028 y #858, que atacan la espera front/back medida.
+   Si rinde más, migrar el fork sobre `nx2` (rama nueva desde nx2 + `git merge -s ours main`).
+4. Al migrar conservar: tema `lichii_dark`, `es.ts`, actualizador contra `Julenn06/Lichii`,
+   `nx2_switches_dialog`, `bug_report`, `crash_report`, «Continuar el último juego», versión del
+   fork en el título, opciones PGO de CMake, `tools/bench`. Descartar el troceo de `nx2_gsv.h`.
+5. Un cambio de versión o de `CMakeLists` provocó una recompilación casi completa del árbol
+   clang (causa sin identificar; el commit posterior solo recompiló 18 pasos).
 
 ## Limitaciones
 
