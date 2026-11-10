@@ -100,6 +100,42 @@ núcleo físico propio y el resto en 4 núcleos 38,4; GPU/GPUBack/VulkanWorker e
 y el resto en 3 núcleos 39,7 (+5 %); núcleos preferentes sin excluir al resto 37,7. No se adopta:
 ganancia pequeña y limita los núcleos emulados.
 
+## Pasada 23 (2026-11-10): ports pequeños de upstream nx2, v3.8.2
+
+Portados a mano (leídos enteros) desde `upstream/nx2`: #446/#621 (sondeo de canales suspendidos),
+#250 (filtro de páginas en `InnerInvalidation`), #264 (trampas de lectura solo en páginas sin
+armar), #481 (`RangeSet` en array ordenado), #580 (caché de rangos virtuales), #700 (bloques
+enteros en el acumulador, `IterateCache` corta pronto), #479 (carrera en `synced`), #404, y #1016
+(`HostTiming` duerme en el sistema; sin el método `host_timing` del servidor de depuración).
+
+| Variante (Kokiri, 2 x 30 s) | FPS |
+|---|---|
+| v3.8.1 (controles intercalados) | 37,4 / 38,0 / 37,8 / 39,1 / 38,0 / 38,0 |
+| solo #446/#621 | 36,7 / 37,6 (sin cambio) |
+| lote sin #1016 | 40,9 / 39,9 / 39,2 |
+| lote con #1016 | 40,0 / 40,6 |
+| `resolution_setup=1` (1/2X) / `nvidia_dlss=false` | 38,6 / 38,9 (la GPU real no limita) |
+
+`HostTiming` con #1016: ~2.950 esperas/s, CPU del hilo 0-8 %, eventos tarde p50/p99 0,2/0,6 ms.
+«60 FPS suaves» sin cambio (60,0 FPS, 16,67 ms de media, máx. 37-40).
+
+Perfil interno (`EDEN_NX2_GPU_PROFILE=1`, ms por segundo a 37 FPS):
+- Hilo `GPU` (front): split drain 429 (8.239/s), list GPU wait 168 (116/s, 1,4 ms cada una:
+  espera a la GPU real para leer listas escritas por compute), resume pending 191, macro 186,
+  pending sleep 4.
+- Hilo `GPUBack`: ocupado ~750 (method 184, bind stage buffers 110, other 80-100, draw 55,
+  fence 46, update buffers 45, read handles 35, compute 34, pipeline lookup 31); split wait 251.
+- Techo estimado quitando todas las esperas del front: ~49 FPS (el back sería el límite), que
+  coincide con lo que upstream mide en este punto con nx2 (48-54 FPS en 5900X / 13900K).
+
+No aplicables a esta base: #910 (no existe `ResolveMemoizedTextures`), HMMA en matrices
+cooperativas (#582/#583: aquí la red del juego ya se sustituye por DLSS/FSR 3.1). Con conflictos
+en 12-17 archivos cada uno (equivale a migrar): #858, #921, #949, #1028, #1056. El PR #805 de
+upstream también está hecho sobre nx2, no sobre la línea Frizti.
+
+Los símbolos del muestreador en la build de release (ICF) salen cambiados de nombre; para
+perfiles por función usar una build con `/OPT:NOICF` o las zonas de `EDEN_NX2_GPU_PROFILE`.
+
 ## Pendiente (por prioridad)
 
 1. AVX2 medido (A/B/A, 3 x 30 s): 38,3 y 38,6 FPS frente a 37,7 sin AVX2 (+2 %, dentro del ruido).
