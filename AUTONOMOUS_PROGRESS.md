@@ -15,9 +15,14 @@ Registro operativo para reanudar el trabajo entre sesiones. Conciso y técnico.
 ## Entorno de compilación (Windows, este PC)
 
 - Código: `E:\Emuladores\Nintendo Switch 2\Aplicacion\Lichii-Decompilado` (clon de GitHub).
-  Enlace sin espacios: `E:\lsrc`. Árbol de compilación MSVC: `E:\lbuild` (Ninja, Release).
-- Scripts en `E:\lxtools`: `configure.bat [dir] [flags]`, `build.bat <dir> <targets>`.
-  Siempre con `VSLANG=1033` (si no, Ninja no detecta cambios en cabeceras).
+  Enlace sin espacios: `E:\lsrc`.
+- Scripts en `E:\lxtools` (siempre con `VSLANG=1033`; si no, Ninja no ve cambios en cabeceras):
+  - MSVC: `configure.bat [dir]`, `build.bat <dir> <targets>` → árbol `E:\lbuild`.
+  - clang-cl 23.1.5 (portable en `E:\lxllvm`): `configure_clang.bat <dir>`, `build_clang.bat <dir> <targets>`.
+    Flags por las variables `LX_CFLAGS` / `LX_LDFLAGS`. Los argumentos `-DX=Y` no pasan por
+    `cmd /c` (el `=` separa argumentos): añadirlos dentro del `.bat`.
+- Árboles: `E:\lbuild` (MSVC), `E:\lbgen` (clang instrumentado, `-fprofile-generate`),
+  `E:\lbclang` (clang + PGO propio + ThinLTO).
 - `E:\lxsrc` y `E:\lxbuild` son de la carpeta antigua (enlace roto): no usar.
 
 ## Banco de pruebas reproducible
@@ -27,17 +32,20 @@ Registro operativo para reanudar el trabajo entre sesiones. Conciso y técnico.
 - `python E:\lxtools\bench.py --name <n> [--exe <dir>] [--env K=V] [--seconds 30] [--repeat 2] [--sample]`
   arranca el juego, carga la partida del banco (balcón de la casa de Link, Bosque Kokiri) con el
   inyector de entrada del servidor de depuración, mide FPS por el contador de frames presentados
-  y cierra. Resultados en `E:\lbench\runs\<n>\result.json`.
+  y cierra. Resultados en `E:\lbench\runs\<n>\result.json`. `--train <s>` hace un recorrido para PGO.
 - Sin teclado simulado ni capturas de pantalla: las imágenes salen del propio emulador
-  (`E:\lxtools\shot.sh`).
-- Ruido entre sesiones: ±5 %. Repetir cada variante antes de sacar conclusiones.
+  (`E:\lxtools\shot.sh <nombre>`).
+- Ruido entre sesiones: ±5 %. Repetir cada variante antes de sacar conclusiones. No medir
+  mientras compila otro árbol.
 
 ## Diagnóstico de rendimiento (medido 2026-11-10)
 
-- Punto fijo (Kokiri, balcón): **~30,6 FPS** con v3.7.9 (MSVC, interruptores por defecto).
-- Perfil por muestreo (10 s): el hilo `GPU` (front) está al 100 %: ~49 % trabajo y ~51 % esperando
-  al hilo `GPUBack` (`GpuSplit::Drain` → `Backoff`: semáforos y lecturas DMA de macros).
-  `GPUBack` ~75 % ocupado (draws, buffer cache). Los 6 `CPUCore_*` solo ~36 % en código JIT.
+- Punto fijo (Kokiri, balcón): **~30,6 FPS** con v3.7.9 (MSVC, interruptores por defecto);
+  con `async_pipelines` + `PREFLUSH=1`: 31,7 (dentro del ruido, con caídas a 15-19).
+- Perfil por muestreo (10 s): el hilo `GPU` (front) está al 100 %: ~47 % trabajo y ~53 % esperando
+  al hilo `GPUBack` (`GpuSplit::Drain`): lecturas DMA de macros (`FrontDmaRead`, 31 %) y
+  semáforos (`ProcessSemaphoreTriggerMethod`, 25 %). `GPUBack` ~74 % ocupado (draws 41 %,
+  compute 11 %). Los 6 `CPUCore_*` solo ~36 % en código JIT.
   **El límite es el código C++ de emulación de GPU, no la CPU emulada.**
 - Referencia upstream en el mismo punto: 48–49,5 FPS (5900X, clang, `PREFLUSH`), comentario en
   `src/video_core/nx2_perf.h`.
@@ -46,14 +54,27 @@ Registro operativo para reanudar el trabajo entre sesiones. Conciso y técnico.
 
 - Repo: faltaban `src/audio_core/out/*` (los ignoraba `.gitignore: out/`); recuperados del commit
   base de upstream y la regla limitada a `/out/`. El repositorio público no compilaba desde cero.
+- Compila con clang-cl 23 + STL de MSVC 14.52: `FindStorageAddr` en
+  `shader_recompiler/ir_opt/global_memory_to_storage_buffer_pass.cpp`.
+- Perfil PGO propio de Ocarina: `E:\lbench\pgo\oot.profdata` (recorrido de 4 min, 16 vueltas).
 
 ## Pendiente (por prioridad)
 
-1. Medir binarios upstream build-130 (MSVC y PGO) en el banco para separar compilador / código.
-2. Compilar con clang-cl 23 + LTO + PGO propio de Ocarina; medir.
-3. Portar de `nx2` los cambios de solape front/back (#858, #949, #1056, #1028, #910, #1016).
-4. Cierre durante la carga de un juego: el hilo de emulación no para y la ventana se cuelga.
+1. Medir `E:\lbclang` (clang + PGO + ThinLTO) contra 30,6 FPS y pasar sus tests.
+2. A/B de los interruptores experimentales ya presentes: `EDEN_NX2_ACQUIRE_PRECHECK=2`,
+   `EDEN_NX2_ACQUIRE_EQUAL=1`, `EDEN_NX2_ACQUIRE_LEARN=1`, `EDEN_NX2_PERF_ON=front_sleep`.
+3. Requiere permiso del usuario: compilar y medir `upstream/nx2` (árbol en `E:\lup`, configurado
+   en `E:\lupbuild`). `nx2` trae #1056 (macros con lectura en el back), #949 (semáforos sin
+   drain), #1028 (lecturas asíncronas), #858 (menos trabajo por draw), que atacan el 53 % de
+   espera medido. Si rinde más, migrar el fork sobre `nx2` (rama nueva desde nx2 +
+   `git merge -s ours main`, sin forzar el push).
+4. Qué conservar al migrar: tema `lichii_dark`, `es.ts`, actualizador contra `Julenn06/Lichii`
+   (`dist/mejorado_version.txt`), `nx2_switches_dialog`, `bug_report`, «Continuar el último juego»,
+   versión del fork en el título. Descartar el troceo de `nx2_gsv.h` (choca con upstream).
+5. Cierre durante la carga de un juego: el hilo de emulación no para (upstream #1058 lo trata).
 
 ## Limitaciones
 
 - No se puede borrar el enlace `E:\lxsrc` desde la sesión (bloqueado); inofensivo.
+- El modo automático no permite ejecutar los binarios precompilados de upstream
+  (`E:\lbench\upstream`, build-130) ni compilar el árbol `upstream/nx2`.
