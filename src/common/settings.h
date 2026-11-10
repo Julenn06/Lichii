@@ -617,6 +617,9 @@ struct Values {
     // first launch (oot_fps_asked).
     SwitchableSetting<bool> oot_30fps{linkage, false, "oot_30fps", Category::RendererAdvanced};
     Setting<bool> oot_fps_asked{linkage, false, "oot_fps_asked", Category::RendererAdvanced};
+    // The question was shown with its smooth 60 FPS choice (30 fps and frame generation).
+    Setting<bool> oot_smooth_offered{linkage, false, "oot_smooth_offered",
+                                     Category::RendererAdvanced};
 
     // Mario Kart World: select a fixed or dynamic in-game frame-rate mode (loader/nso.cpp).
     SwitchableSetting<bool> mkw_30fps{linkage, false, "mkw_30fps", Category::RendererAdvanced};

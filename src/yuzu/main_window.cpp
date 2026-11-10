@@ -3763,6 +3763,11 @@ void MainWindow::RunUiPreview(const QString& dir) {
         save_dialog(play_time, QStringLiteral("dialog_play_time"));
     }
     {
+        QMessageBox question{this};
+        oot_frame_rate->FillQuestion(question);
+        save_dialog(question, QStringLiteral("dialog_oot_frame_rate"));
+    }
+    {
         // Sample text: the preview is a development tool, not translated.
         QMessageBox box{QMessageBox::Question, QStringLiteral("Lichii"),
                         QStringLiteral("¿Detener la emulación? Se perderá el progreso no "

@@ -81,12 +81,30 @@ Registro operativo para reanudar el trabajo entre sesiones. Conciso y técnico.
 Ninguno sale del ruido (±2 %). Lecturas DMA de macros: ~24.000/s sin drain y ~3.400/s con drain,
 el 82 % de estas por «compute/copy enviado desde la instantánea» (`GpuSplit::MayBeWrittenSince`).
 
+## Generación de frames y afinidad (medido 2026-11-10, build de release)
+
+| Variante | Juego | En pantalla (Host pacing) |
+|---|---|---|
+| por defecto | 37,1 FPS | 38,6 FPS, intervalo medio 26 ms, máx. 34-38 |
+| `frame_gen` FSR3 x2 | 35,6 FPS | 72 FPS, medio 13,9 ms, máx. 30-35 |
+| `frame_gen` FSR3 x2 + `oot_30fps` | 30,0 FPS | **60,0 FPS**, medio 16,67 ms, máx. 37 |
+| `oot_30fps` | 30,0 FPS | 30 FPS, medio 33,3 ms, máx. 40-44 |
+
+De ahí la opción «60 FPS suaves» del diálogo de Ocarina (`src/yuzu/oot_frame_rate.cpp`,
+ajuste `oot_smooth_offered`): pone `oot_30fps`, `frame_gen`, tipo FSR3 y x2 antes de crear el
+renderizador. `frame_gen` no es modificable en caliente (modo de presentación, almacenamiento de
+los frames y número de imágenes se fijan al crear el swapchain).
+
+Afinidad de hilos desde fuera (`bench.py --affinity`), 2 x 30 s: control 37,6; GPU y GPUBack con
+núcleo físico propio y el resto en 4 núcleos 38,4; GPU/GPUBack/VulkanWorker en un lógico cada uno
+y el resto en 3 núcleos 39,7 (+5 %); núcleos preferentes sin excluir al resto 37,7. No se adopta:
+ganancia pequeña y limita los núcleos emulados.
+
 ## Pendiente (por prioridad)
 
 1. AVX2 medido (A/B/A, 3 x 30 s): 38,3 y 38,6 FPS frente a 37,7 sin AVX2 (+2 %, dentro del ruido).
    No se adopta: no compensa dejar fuera las CPU sin AVX2.
-2. Probar la generación de frames ya incluida (`frame_gen`, tipo FSR3, x2) como vía a 60 FPS
-   presentados; documentar calidad y coste antes de recomendarla.
+2. La pregunta nueva de Ocarina bloquea un banco sin `oot_smooth_offered=true` en su configuración.
 3. Requiere permiso del usuario: compilar y medir `upstream/nx2` (árbol en `E:\lup`, configurado
    en `E:\lupbuild`). Trae #1056, #949, #1028 y #858, que atacan la espera front/back medida.
    Si rinde más, migrar el fork sobre `nx2` (rama nueva desde nx2 + `git merge -s ours main`).

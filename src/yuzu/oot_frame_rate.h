@@ -10,12 +10,17 @@
 
 #include "common/common_types.h"
 
+class QAbstractButton;
+class QMessageBox;
 class QPushButton;
 class QStatusBar;
 class QWidget;
 
 /// Ocarina of Time's 60 / 30 FPS choice: asked the first time the game boots, then a status bar
-/// button switches it at once while the game runs (Settings::values.oot_30fps).
+/// button switches it at once while the game runs (Settings::values.oot_30fps). Where frame
+/// generation is built in, the question also offers smooth 60 FPS: the game at 30 with a generated
+/// frame between every two (Kokiri porch, Ryzen 5 5600X: 37 fps unlocked, a steady 60 on screen
+/// this way).
 class OotFrameRateControl : public QObject {
     Q_OBJECT
 
@@ -29,6 +34,16 @@ public:
 
     /// Shows the current setting (it can also change in the configuration dialogs).
     void Refresh();
+
+    struct Choices {
+        QAbstractButton* fps60{};
+        QAbstractButton* smooth60{}; ///< Null without frame generation
+        QAbstractButton* fps30{};
+    };
+    /// Fills the question into `box` (also used by the UI preview) and returns its buttons.
+    Choices FillQuestion(QMessageBox& box);
+    /// Whether this build has frame generation.
+    static bool SmoothAvailable();
 
 private:
     void Ask();
