@@ -15,6 +15,42 @@ import statistics
 import subprocess
 import sys
 import time
+import ctypes
+
+
+def _filetime(value):
+    return ((value.hi << 32) | value.lo) / 1e7
+
+
+class _FileTime(ctypes.Structure):
+    _fields_ = [('lo', ctypes.c_uint32), ('hi', ctypes.c_uint32)]
+
+
+def cpu_times():
+    # (inactivo, total) del sistema, en segundos de CPU sumados entre todos los nucleos.
+    idle, kernel, user = _FileTime(), _FileTime(), _FileTime()
+    ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kernel),
+                                          ctypes.byref(user))
+    return _filetime(idle), _filetime(kernel) + _filetime(user)
+
+
+def process_cpu(pid):
+    # Segundos de CPU consumidos por un proceso (0 si ya no existe).
+    handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+    if not handle:
+        return 0.0
+    times = [_FileTime() for _ in range(4)]
+    ok = ctypes.windll.kernel32.GetProcessTimes(handle, *[ctypes.byref(t) for t in times])
+    ctypes.windll.kernel32.CloseHandle(handle)
+    return _filetime(times[2]) + _filetime(times[3]) if ok else 0.0
+
+
+def system_busy(seconds=3.0):
+    # Porcentaje de CPU ocupada en todo el sistema durante un intervalo.
+    idle0, total0 = cpu_times()
+    time.sleep(seconds)
+    idle1, total1 = cpu_times()
+    return round(100.0 * (1.0 - (idle1 - idle0) / max(total1 - total0, 1e-9)), 1)
 
 APP = 'E:/lbench/app'
 RUNS = 'E:/lbench/runs'
@@ -105,6 +141,64 @@ def measure(debug, seconds, step=0.5):
             'fps_stdev': round(statistics.pstdev(windows), 2), 'windows': len(windows)}
 
 
+def apply_affinity(pid, spec):
+    """Experimento: fija la afinidad de hilos por nombre. spec = 'GPU=0,1;GPUBack=2,3;*=4-11'
+    (procesadores logicos; '*' es el resto de hilos). Devuelve cuantos hilos toco por regla."""
+    import ctypes
+    from ctypes import wintypes
+
+    def mask_of(text):
+        mask = 0
+        for part in text.split(','):
+            low, _, high = part.partition('-')
+            for cpu in range(int(low), int(high or low) + 1):
+                mask |= 1 << cpu
+        return mask
+
+    rules = {}
+    for rule in spec.split(';'):
+        name, _, cpus = rule.partition('=')
+        rules[name.strip()] = mask_of(cpus)
+
+    class ThreadEntry(ctypes.Structure):
+        _fields_ = [('dwSize', wintypes.DWORD), ('cntUsage', wintypes.DWORD),
+                    ('th32ThreadID', wintypes.DWORD), ('th32OwnerProcessID', wintypes.DWORD),
+                    ('tpBasePri', wintypes.LONG), ('tpDeltaPri', wintypes.LONG),
+                    ('dwFlags', wintypes.DWORD)]
+
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernelbase = ctypes.WinDLL('KernelBase', use_last_error=True)
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel32.OpenThread.restype = wintypes.HANDLE
+    kernel32.SetThreadAffinityMask.restype = ctypes.c_size_t
+    kernel32.SetThreadAffinityMask.argtypes = [wintypes.HANDLE, ctypes.c_size_t]
+    kernelbase.GetThreadDescription.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.LPWSTR)]
+    snapshot = kernel32.CreateToolhelp32Snapshot(0x4, 0)
+    entry = ThreadEntry()
+    entry.dwSize = ctypes.sizeof(ThreadEntry)
+    touched = {}
+    more = kernel32.Thread32First(wintypes.HANDLE(snapshot), ctypes.byref(entry))
+    while more:
+        if entry.th32OwnerProcessID == pid:
+            # THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION | THREAD_QUERY_LIMITED_INFORMATION
+            handle = kernel32.OpenThread(0x0020 | 0x0040 | 0x0800, False, entry.th32ThreadID)
+            if handle:
+                text = wintypes.LPWSTR()
+                name = ''
+                if kernelbase.GetThreadDescription(wintypes.HANDLE(handle),
+                                                   ctypes.byref(text)) >= 0:
+                    name = text.value or ''
+                    kernel32.LocalFree(text)
+                key = name if name in rules else '*'
+                if key in rules and kernel32.SetThreadAffinityMask(wintypes.HANDLE(handle),
+                                                                   rules[key]):
+                    touched[key] = touched.get(key, 0) + 1
+                kernel32.CloseHandle(wintypes.HANDLE(handle))
+        more = kernel32.Thread32Next(wintypes.HANDLE(snapshot), ctypes.byref(entry))
+    kernel32.CloseHandle(wintypes.HANDLE(snapshot))
+    return touched
+
+
 def host_pacing(log_path, last=3):
     """Frames que llegan a pantalla (incluye los generados), de los informes del pacer cada 10 s."""
     import re
@@ -180,13 +274,24 @@ def main():
     parser.add_argument('--shots', action='store_true')
     parser.add_argument('--port', type=int, default=PORT)
     parser.add_argument('--app', help='carpeta de aplicacion alternativa (con su propio user/)')
+    parser.add_argument('--affinity', default='',
+                        help="experimento de afinidad por nombre de hilo: 'GPU=0,1;GPUBack=2,3;*=4-11'")
     parser.add_argument('--config', action='append', default=[],
                         help='clave=valor de qt-config.ini solo para esta ejecucion')
+    parser.add_argument('--max-busy', type=float, default=15.0,
+                        help='CPU ocupada por otros programas (porcentaje) que invalida la medida')
+    parser.add_argument('--allow-busy', action='store_true',
+                        help='mide aunque el PC este ocupado (el resultado queda marcado)')
     args = parser.parse_args()
     global APP
     if args.app:
         APP = args.app.replace(chr(92), '/')
 
+    busy_before = system_busy()
+    if busy_before > args.max_busy and not args.allow_busy:
+        print(f'PC ocupado: {busy_before} % de CPU en uso antes de empezar; no se mide '
+              '(--allow-busy para medir igualmente)')
+        return 3
     run_dir = f'{RUNS}/{args.name}'
     os.makedirs(run_dir, exist_ok=True)
     if args.exe:
@@ -242,6 +347,7 @@ def main():
     open(f'{RUNS}/manual.pid', 'w').write(str(proc.pid))
     debug = Debug(args.port)
     result = {'name': args.name, 'env': args.env, 'exe': args.exe or 'sin cambiar'}
+    result['system_busy_before_pct'] = busy_before
     try:
         scenario_kokiri(debug, proc, run_dir, args)
         result['boot_to_spot_s'] = round(time.monotonic() - started, 1)
@@ -250,6 +356,8 @@ def main():
         if args.explore:
             print(json.dumps(result, indent=1))
             return 0
+        if args.affinity:
+            result['affinity'] = apply_affinity(proc.pid, args.affinity)
         time.sleep(args.warmup)
         if args.train > 0:
             # Recorrido de entrenamiento para PGO: camara, caminar, menu. No mide.
@@ -275,7 +383,18 @@ def main():
             except RuntimeError as error:
                 result['pgo_dump'] = str(error)
             args.repeat = 0
+        idle0, total0 = cpu_times()
+        own0 = process_cpu(proc.pid)
         result['runs'] = [measure(debug, args.seconds) for _ in range(args.repeat)]
+        idle1, total1 = cpu_times()
+        if total1 > total0:
+            # Lo que gastaron los demas programas mientras se media, sobre el total de nucleos.
+            others = (total1 - total0) - (idle1 - idle0) - (process_cpu(proc.pid) - own0)
+            result['other_cpu_pct'] = round(100.0 * max(others, 0.0) / (total1 - total0), 1)
+            result['disturbed'] = result['other_cpu_pct'] > args.max_busy
+            if result['disturbed']:
+                print(f"AVISO: otros programas usaron el {result['other_cpu_pct']} % de la CPU "
+                      'durante la medida; resultado no valido')
         if not result['runs']:
             result['runs'] = [{'fps_avg': debug.status()['fps']}]
         result['fps_avg'] = round(statistics.mean(r['fps_avg'] for r in result['runs']), 2)
