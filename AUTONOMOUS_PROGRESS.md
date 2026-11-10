@@ -156,7 +156,8 @@ Binarios oficiales de nx2 build 130 (PGO, incluye #858, #949, #1028 y #1056) en 
   ejecuciones y descartar las que tengan muchas líneas `async_pipelines`.
 - `EDEN_NX2_VSYNC_HZ=240` en nx2: series con paradas y un cuelgue al cerrar; sin dato fiable.
 - Este árbol ya fija los hilos de GPU a un núcleo físico cada uno con 6 o más núcleos
-  (`Common::PinCurrentThread`, `EDEN_NX2_PIN_THREADS=0` lo quita). Sin medir aún sin fijar.
+  (`Common::PinCurrentThread`, `EDEN_NX2_PIN_THREADS=0` lo quita). Medido el 2026-11-11
+  (v3.8.2, 2 x 30 s, intercalado): fijados 39,8 y 39,4 FPS; sin fijar 35,7 y 35,9. Se queda fijado.
 
 ## Congelación vista una vez en v3.8.2 (2026-11-10)
 
@@ -175,7 +176,7 @@ medida da 0 FPS, y no mide con más de un 15 % de CPU ocupada por otros programa
    No se adopta: no compensa dejar fuera las CPU sin AVX2.
 2. La pregunta nueva de Ocarina bloquea un banco sin `oot_smooth_offered=true` en su configuración.
 3. nx2 medido (ver arriba): no se migra. Seguir portando a mano solo lo pequeño que aplique.
-4. Ideas sin medir: `EDEN_NX2_PIN_THREADS=0` y otros repartos de núcleos en el 5600X; enlazar la
+4. Ideas sin medir: otros repartos de núcleos en el 5600X (fijar ya da +11 %); enlazar la
    release con `/OPT:NOICF` para que los informes de fallo y de cuelgue tengan símbolos fiables;
    reducir el trabajo por draw del hilo `GPUBack` (bind stage buffers, method).
 5. Un cambio de versión o de `CMakeLists` provocó una recompilación casi completa del árbol
