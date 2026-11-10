@@ -26,10 +26,21 @@ python bench.py --name base --exe E:/lbuild/bin --seconds 30 --repeat 2
 python bench.py --name variante --exe E:/lbclang/bin --env EDEN_NX2_X=1 --sample
 ```
 
-## PGO con clang
+## Build de release (clang + PGO + ThinLTO)
 
-1. Árbol instrumentado: `LX_CFLAGS=-fprofile-generate` y `configure_clang.bat E:\lbgen`.
+`configure_release.bat E:\lrel` configura con clang-cl, `LICHII_PGO_PROFILE=dist/pgo/lichii-oot.profdata`
+y `LICHII_THIN_LTO=ON`; `build_clang.bat E:\lrel yuzu tests update_checker_tests` compila.
+`package.ps1 -Version X.Y.Z` monta el paquete, comprueba la interfaz fuera de pantalla y crea el zip.
+
+Medido en el balcón de Kokiri (Ryzen 5 5600X, RTX 4060 Ti): MSVC 31,7 FPS, clang + PGO + ThinLTO 38,4 FPS.
+
+## Regenerar el perfil PGO
+
+1. Árbol instrumentado: `configure_clang.bat E:\lbgen` con `LX_CFLAGS=-fprofile-generate`
+   (o la opción de CMake `LICHII_PGO_GENERATE=ON`).
 2. Entrenamiento: `bench.py --name pgo_train --exe E:/lbgen/bin --train 240` con
    `LLVM_PROFILE_FILE=E:/lbench/pgo/oot-%p.profraw`.
-3. `llvm-profdata merge -o oot.profdata oot-*.profraw`.
-4. Árbol optimizado: `LX_CFLAGS=-fprofile-use=<oot.profdata> -flto=thin` y `configure_clang.bat E:\lbclang`.
+3. `llvm-profdata merge -o dist/pgo/lichii-oot.profdata oot-*.profraw`.
+
+Las funciones que cambien después de grabar el perfil solo pierden sus contadores; conviene
+regenerarlo cuando cambie mucho código de `video_core`.

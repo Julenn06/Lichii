@@ -31,6 +31,7 @@
 #include <cstring>
 #endif
 
+#include "crash_report.h"
 #include "main_window.h"
 
 #ifdef _WIN32
@@ -211,6 +212,7 @@ int main(int argc, char* argv[]) {
 #ifdef YUZU_CRASH_DUMPS
     Breakpad::InstallCrashHandler();
 #endif
+    CrashReport::Install();
 
     // Init settings params
     QCoreApplication::setOrganizationName(QStringLiteral("eden"));

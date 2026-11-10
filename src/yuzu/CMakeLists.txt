@@ -226,6 +226,7 @@ add_executable(yuzu
     nup_dialogs.h nup_dialogs.cpp
     nx2_switches_dialog.h nx2_switches_dialog.cpp
     bug_report.h bug_report.cpp
+    crash_report.h crash_report.cpp
     oot_frame_rate.h oot_frame_rate.cpp
     migration_worker.h migration_worker.cpp
     libqt_common.h libqt_common.cpp

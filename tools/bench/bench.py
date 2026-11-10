@@ -170,7 +170,14 @@ def main():
     run_dir = f'{RUNS}/{args.name}'
     os.makedirs(run_dir, exist_ok=True)
     if args.exe:
-        shutil.copyfile(f'{args.exe}/lichii.exe', f'{APP}/lichii.exe')
+        for attempt in range(15):
+            try:
+                shutil.copyfile(f'{args.exe}/lichii.exe', f'{APP}/lichii.exe')
+                break
+            except PermissionError:
+                time.sleep(2)
+        else:
+            raise RuntimeError('lichii.exe del banco sigue en uso')
         if os.path.exists(f'{args.exe}/lichii.pdb'):
             shutil.copyfile(f'{args.exe}/lichii.pdb', f'{APP}/lichii.pdb')
         elif os.path.exists(f'{APP}/lichii.pdb'):
@@ -179,6 +186,12 @@ def main():
         path = f'{APP}/user/log/{name}'
         if os.path.isfile(path):
             os.remove(path)
+    # Cada ejecucion parte de la misma partida: los autoguardados de una no pasan a la siguiente.
+    pristine = 'E:/lbench/save-pristine'
+    save_dir = f'{APP}/user/nand/user/save'
+    if os.path.isdir(pristine) and APP.lower().startswith('e:/lbench'):
+        shutil.rmtree(save_dir, ignore_errors=True)
+        shutil.copytree(pristine, save_dir)
 
     env = dict(os.environ)
     env['EDEN_NX2_DEBUG_SERVER'] = f'127.0.0.1:{args.port}'
@@ -248,6 +261,8 @@ def main():
                     closed = 'limpio'
                 except subprocess.TimeoutExpired:
                     proc.kill()
+                    proc.wait(timeout=30)
+                    time.sleep(3)
                     closed = 'forzado'
             result['close'] = closed
             for name in os.listdir(f'{APP}/user/log'):

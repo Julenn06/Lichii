@@ -165,6 +165,12 @@ if (MSVC AND NOT CXX_CLANG)
         set(CMAKE_EXE_LINKER_FLAGS_RELEASE "/DEBUG /MANIFEST:NO /INCREMENTAL:NO /OPT:REF,NOICF" CACHE STRING "" FORCE)
     endif()
 else()
+    if (MSVC)
+        # clang-cl: the block above is for cl.exe. Without /DEBUG lld-link writes no PDB, which
+        # the sampling profiler and crash dumps need for function names; /OPT:REF,ICF is what a
+        # link without /DEBUG does by default.
+        set(CMAKE_EXE_LINKER_FLAGS_RELEASE "/DEBUG /INCREMENTAL:NO /OPT:REF,ICF" CACHE STRING "" FORCE)
+    endif()
     if (NOT MSVC)
         add_compile_options(
             $<$<COMPILE_LANGUAGE:C,CXX>:-fwrapv>

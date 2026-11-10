@@ -144,6 +144,7 @@ static FileSys::VirtualFile VfsDirectoryCreateFileWrapper(const FileSys::Virtual
 #include "common/fs/fs.h"
 #include "common/logging.h"
 #include "common/memory_detect.h"
+#include "common/nx2_sampler.h"
 #include "common/scm_rev.h"
 #include "common/scope_exit.h"
 #include "common/string_util.h"
@@ -2326,6 +2327,12 @@ void MainWindow::OnEmulationStopTimeout() {
 void MainWindow::TerminateEmulationThread() {
     if (QtCommon::emu_thread && QtCommon::emu_thread->isRunning()) {
         LOG_ERROR(Frontend, "Emulation thread failed to stop, terminating it");
+        // Where every thread is stuck, next to the log: a hang on close is otherwise invisible
+        // (the log just stops). Windows only; elsewhere the sampler returns at once.
+        const auto report =
+            Common::FS::GetEdenPath(Common::FS::EdenPath::LogDir) / "shutdown_hang_stacks.txt";
+        Nx2Sampler::Sample("*", 0.3, Common::FS::PathToUTF8String(report));
+        LOG_ERROR(Frontend, "Thread stacks written to {}", Common::FS::PathToUTF8String(report));
         QtCommon::emu_thread->terminate();
         QtCommon::emu_thread->wait();
     }

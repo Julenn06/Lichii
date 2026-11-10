@@ -21,6 +21,48 @@ include(UseLTO)
 # Host code for AVX2 CPUs (Intel Haswell, AMD Zen and newer): the compiler may use 256-bit vectors,
 # FMA and BMI2 in hot loops. Off by default: such a binary does not start on older CPUs.
 option(LICHII_HOST_AVX2 "Compile host code for AVX2-capable x86-64 CPUs" OFF)
+# Profile-guided optimization and ThinLTO with clang (clang-cl included). The GPU threads run
+# branchy host code with no single hot function, where a profile of the real game pays most:
+# Ocarina of Time at the Kokiri porch, Ryzen 5 5600X, 31.7 fps with MSVC and 38.4 fps with clang-cl
+# 23, dist/pgo/lichii-oot.profdata and ThinLTO (tools/bench/README.md has the recipe).
+# LICHII_PGO_PROFILE=<file.profdata> compiles against that profile; LICHII_PGO_GENERATE=ON makes
+# the instrumented build that writes one (LLVM_PROFILE_FILE names the output).
+set(LICHII_PGO_PROFILE "" CACHE FILEPATH "LLVM .profdata file to optimize with (clang only)")
+option(LICHII_PGO_GENERATE "Instrumented build that records a PGO profile (clang only)" OFF)
+option(LICHII_THIN_LTO "ThinLTO (clang with lld only)" OFF)
+if (LICHII_PGO_PROFILE OR LICHII_PGO_GENERATE OR LICHII_THIN_LTO)
+    if (NOT CXX_CLANG)
+        message(FATAL_ERROR "LICHII_PGO_PROFILE, LICHII_PGO_GENERATE and LICHII_THIN_LTO need clang")
+    endif()
+    if (LICHII_PGO_PROFILE AND LICHII_PGO_GENERATE)
+        message(FATAL_ERROR "LICHII_PGO_PROFILE and LICHII_PGO_GENERATE exclude each other")
+    endif()
+    if (LICHII_PGO_GENERATE)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-fprofile-generate>)
+        if (NOT MSVC)
+            add_link_options(-fprofile-generate)
+        endif()
+        message(STATUS "PGO: instrumented build")
+    elseif (LICHII_PGO_PROFILE)
+        if (NOT EXISTS "${LICHII_PGO_PROFILE}")
+            message(FATAL_ERROR "LICHII_PGO_PROFILE: ${LICHII_PGO_PROFILE} does not exist")
+        endif()
+        # Functions changed since the profile was recorded just lose their counts.
+        add_compile_options(
+            $<$<COMPILE_LANGUAGE:C,CXX>:-fprofile-use=${LICHII_PGO_PROFILE}>
+            $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-profile-instr-unprofiled>
+            $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-profile-instr-out-of-date>
+            $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-backend-plugin>)
+        message(STATUS "PGO: optimizing with ${LICHII_PGO_PROFILE}")
+    endif()
+    if (LICHII_THIN_LTO)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-flto=thin>)
+        if (NOT MSVC)
+            add_link_options(-flto=thin)
+        endif()
+        message(STATUS "ThinLTO on")
+    endif()
+endif()
 include(FasterLinker)
 include(UseCcache)
 include(CMakeDependentOption)
