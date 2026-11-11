@@ -185,10 +185,12 @@ medida da 0 FPS, y no mide con más de un 15 % de CPU ocupada por otros programa
   SynchronizeBuffer 6,5 %, espera 15,5 % + giro en BackLoop.
 - Front y back casi no se solapan: 10,5 ms + 20 ms de trabajo por frame dan 26,8 ms de frame.
   Cada drain que se quite del front acerca el frame a los ~20 ms del back (techo ~49 FPS).
-  El 82 % de los drains de lecturas DMA son por «compute/copy enviado desde la instantánea»: el
-  front no sabe qué rangos escribe un dispatch. Siguiente objetivo: que el back publique los
-  rangos que cada dispatch puede escribir y el front espere solo si solapan con lo que lee
-  (`GpuSplit::WaitForWritesTo` ya existe para las escrituras conocidas).
+  Descartado midiendo (2026-11-11): tratar el compute/copy pendiente como si no escribiera lo que
+  leen las macros (modo de prueba de `EDEN_NX2_DMA_SNAPSHOT`, código no conservado) no da nada:
+  39,3 y 34,5 FPS frente a 39,1 y 38,1, y los drains solo bajan un 10 %. El «82 % por
+  compute/copy» del registro era un efecto de cómo se etiqueta el motivo (se mira primero el
+  compute); lo que de verdad obliga a esperar son escrituras anotadas (reports, subidas) y las
+  sin rango. Con comprobación de cada lectura: 0 diferencias en 2,6 millones.
 - Escrituras de registro en el back: 3,44 M/s (92.000 por frame, 53 ns cada una); el 36 % repite
   valor pero son registros disparadores (draw.begin/end, index_buffer.count, cb_data).
 
