@@ -15,6 +15,12 @@ Copy-Item "$Build\bin\lichii.exe", "$Build\bin\qt.conf", "$Build\bin\nx2_switche
 Copy-Item "$Build\bin\Qt6*.dll" $pkg
 Copy-Item -Recurse "$Build\bin\plugins" "$pkg\plugins"
 
+# Los simbolos de cada version se guardan aparte (no van en el zip): sin ellos un informe de
+# fallo de esa version no se puede traducir a nombres de funcion.
+$pdbDir = "$Stage\pdb\$Version"
+New-Item -ItemType Directory -Force $pdbDir | Out-Null
+if (Test-Path "$Build\bin\lichii.pdb") { Copy-Item "$Build\bin\lichii.pdb" $pdbDir -Force; "pdb: $pdbDir" }
+
 # Vista previa de la interfaz: plugin offscreen temporal y carpeta user desechable.
 $offscreen = "$pkg\plugins\platforms\qoffscreen.dll"
 Copy-Item 'E:\lxqt\6.8.3\msvc2022_64\plugins\platforms\qoffscreen.dll' $offscreen -Force

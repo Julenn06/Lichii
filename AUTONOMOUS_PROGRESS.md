@@ -170,6 +170,28 @@ pasada 23. No reproducida en 7 arranques seguidos ni en los otros ~27 de las bui
 `bench.py` guarda ahora `freeze_samples.txt` (pilas en el momento de la congelación) cuando una
 medida da 0 FPS, y no mide con más de un 15 % de CPU ocupada por otros programas.
 
+## Pasada 24 (2026-11-11): perfil fiable y diagnóstico
+
+- Los nombres del muestreador en la release salían mal no por ICF sino porque el PDB solo tiene
+  símbolos públicos (se compila sin información de depuración y ThinLTO vuelve internas casi
+  todas las funciones). Sin ICF (`LICHII_LINK_ICF=OFF`, ahora también en clang-cl) salen igual
+  de mal. Para perfiles por función: build de MSVC (`E:/lbuild`, aceptable en los marcos con
+  símbolo externo) o compilar con tablas de líneas. Pendiente: `-gline-tables-only` en la release.
+- `package.ps1` guarda el PDB de cada versión en `stage/pdb/<versión>` (el de v3.8.2 se perdió al
+  relinkar; el reconstruido no coincide byte a byte en `.text`).
+- Perfil MSVC del front (`GPU`): Drain 43,7 % (FrontDmaRead 26,6 %, ProcessSemaphoreTriggerMethod
+  20,1 %), espera a la GPU real por listas escritas por compute 12,8 % (`Nx2ReadListCopy`),
+  trabajo propio ~40 %. Del back: Draw 37,6 %, compute 10 %, BindHostStageBuffers 9,5 %,
+  SynchronizeBuffer 6,5 %, espera 15,5 % + giro en BackLoop.
+- Front y back casi no se solapan: 10,5 ms + 20 ms de trabajo por frame dan 26,8 ms de frame.
+  Cada drain que se quite del front acerca el frame a los ~20 ms del back (techo ~49 FPS).
+  El 82 % de los drains de lecturas DMA son por «compute/copy enviado desde la instantánea»: el
+  front no sabe qué rangos escribe un dispatch. Siguiente objetivo: que el back publique los
+  rangos que cada dispatch puede escribir y el front espere solo si solapan con lo que lee
+  (`GpuSplit::WaitForWritesTo` ya existe para las escrituras conocidas).
+- Escrituras de registro en el back: 3,44 M/s (92.000 por frame, 53 ns cada una); el 36 % repite
+  valor pero son registros disparadores (draw.begin/end, index_buffer.count, cb_data).
+
 ## Pendiente (por prioridad)
 
 1. AVX2 medido (A/B/A, 3 x 30 s): 38,3 y 38,6 FPS frente a 37,7 sin AVX2 (+2 %, dentro del ruido).

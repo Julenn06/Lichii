@@ -168,8 +168,15 @@ else()
     if (MSVC)
         # clang-cl: the block above is for cl.exe. Without /DEBUG lld-link writes no PDB, which
         # the sampling profiler and crash dumps need for function names; /OPT:REF,ICF is what a
-        # link without /DEBUG does by default.
-        set(CMAKE_EXE_LINKER_FLAGS_RELEASE "/DEBUG /INCREMENTAL:NO /OPT:REF,ICF" CACHE STRING "" FORCE)
+        # link without /DEBUG does by default. LICHII_LINK_ICF=OFF keeps identical functions
+        # apart: with ICF the profiler, the crash report and the hang report name one of the
+        # folded functions, often not the one that ran.
+        option(LICHII_LINK_ICF "Fold identical functions when linking Release builds" ON)
+        if (LICHII_LINK_ICF)
+            set(CMAKE_EXE_LINKER_FLAGS_RELEASE "/DEBUG /INCREMENTAL:NO /OPT:REF,ICF" CACHE STRING "" FORCE)
+        else()
+            set(CMAKE_EXE_LINKER_FLAGS_RELEASE "/DEBUG /INCREMENTAL:NO /OPT:REF,NOICF" CACHE STRING "" FORCE)
+        endif()
     endif()
     if (NOT MSVC)
         add_compile_options(
